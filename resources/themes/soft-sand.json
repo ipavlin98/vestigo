@@ -1,0 +1,30 @@
+{
+  "name": "Soft Sand",
+  "base": "light",
+  "palette": {
+    "background": "#f6f3ec",
+    "surface": "#f6f3ec",
+    "text": "#161615",
+    "muted": "#62615e",
+    "faint": "#8b8985",
+    "accent": "#8b5cf6",
+    "selected": "#e9e6df",
+    "hover": "#eeebe4",
+    "border": "#e1ded8",
+    "divider": "#e8e5de",
+    "selection": "#cdcac4",
+    "track": "#cdcac4",
+    "shadow": "#0000001f"
+  },
+  "toggle": { "on": "accent" },
+  "slider": { "fill": "accent" },
+  "dropdown": { "check": "accent" },
+  "header": { "arrow": "accent" },
+  "radius": { "large": 4, "small": 2 },
+  "windows": {
+    "launcher": { "corners": 4 },
+    "dialog": { "corners": { "bottom_left": 4, "bottom_right": 4 } },
+    "explorer": { "corners": { "top_left": 4 } },
+    "app": { "corners": 4 }
+  }
+}

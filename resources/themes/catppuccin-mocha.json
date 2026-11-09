@@ -1,0 +1,48 @@
+{
+  "name": "Catppuccin Mocha",
+  "base": "dark",
+  "palette": {
+    "rosewater": "#f5e0dc",
+    "pink": "#f5c2e7",
+    "mauve": "#cba6f7",
+    "red": "#f38ba8",
+    "peach": "#fab387",
+    "green": "#a6e3a1",
+    "blue": "#89b4fa",
+    "lavender": "#b4befe",
+    "subtext0": "#a6adc8",
+    "overlay1": "#7f849c",
+    "surface2": "#585b70",
+    "surface1": "#45475a",
+    "surface0": "#313244",
+    "base": "#1e1e2e",
+    "mantle": "#181825",
+    "crust": "#11111b",
+
+    "background": "base",
+    "surface": "mantle",
+    "text": "#cdd6f4",
+    "muted": "subtext0",
+    "faint": "overlay1",
+    "accent": "mauve",
+    "selected": "surface0",
+    "hover": "#28283a",
+    "border": "surface1",
+    "divider": "surface0",
+    "selection": "surface2",
+    "track": "surface1",
+    "shadow": "#11111b1f"
+  },
+  "radius": { "large": 8, "small": 6 },
+  "input": { "caret": "rosewater" },
+  "nav": { "current_text": "lavender" },
+  "header": { "arrow": "mauve" },
+  "toggle": { "on": "mauve", "knob": "crust" },
+  "dropdown": { "check": "mauve", "chosen_text": "lavender" },
+  "windows": {
+    "launcher": { "corners": 12 },
+    "dialog": { "corners": { "bottom_left": 12, "bottom_right": 12 } },
+    "explorer": { "corners": { "top_left": 12 } },
+    "app": { "corners": 10 }
+  }
+}

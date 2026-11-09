@@ -1,0 +1,24 @@
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+
+disallowed-methods = [
+    { path = "gpui::Styled::border_color", reason = "a GPUI border is 1 logical px and blurs at 125/150/175 %: draw hairlines with ui::divider or ui::frame" },
+    { path = "gpui::Styled::truncate", reason = "GPUI 0.2.2 cuts without an ellipsis: fade overflowing text with ui::faded" },
+    { path = "gpui::Styled::text_ellipsis", reason = "GPUI 0.2.2 cuts without an ellipsis: fade overflowing text with ui::faded" },
+    { path = "gpui::Styled::line_clamp", reason = "fade overflowing text with ui::faded" },
+    { path = "gpui::Styled::shadow", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_2xs", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_xs", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_sm", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_md", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_lg", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_xl", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::Styled::shadow_2xl", reason = "the only shadow is the search window's own shadow window" },
+    { path = "gpui::rgb", reason = "colors come only from Theme tokens (theme.rs)" },
+    { path = "gpui::rgba", reason = "colors come only from Theme tokens (theme.rs)" },
+    { path = "gpui::hsla", reason = "colors come only from Theme tokens (theme.rs)" },
+    { path = "gpui::black", reason = "colors come only from Theme tokens (theme.rs)" },
+    { path = "gpui::white", reason = "colors come only from Theme tokens (theme.rs)" },
+    { path = "gpui::transparent_black", reason = "GPUI blends edges in straight alpha, so a transparent black fill darkens anti-aliased pixels: use the neighbouring color with .opacity(0.)" },
+    { path = "gpui::transparent_white", reason = "GPUI blends edges in straight alpha: use the neighbouring color with .opacity(0.)" },
+]

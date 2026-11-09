@@ -1,0 +1,14 @@
+Vestigo portable
+
+Nothing to install: run Vestigo.exe from any folder.
+
+  Vestigo.exe       64-bit Windows (almost every PC)
+  Vestigo-x86.exe   32-bit Windows
+
+The ARM64 archive has a single Vestigo.exe.
+
+Vestigo asks for administrator rights at start: it needs them to read the NTFS file table. Decline and it still
+works, only slower to index and without live updates.
+
+Settings and logs are kept in %APPDATA%\Vestigo, the index and icon caches in %LOCALAPPDATA%\Vestigo.
+"Start with Windows" in Settings points to this copy of Vestigo.exe, so turn it off before moving the folder.

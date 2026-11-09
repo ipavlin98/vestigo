@@ -1,0 +1,18 @@
+{
+  "name": "Light",
+  "palette": {
+    "background": "#ffffff",
+    "surface": "#ffffff",
+    "text": "#171717",
+    "muted": "#666666",
+    "faint": "#8f8f8f",
+    "accent": "#000000",
+    "selected": "#f2f2f2",
+    "hover": "#f7f7f7",
+    "border": "#e8e8e8",
+    "divider": "#efefef",
+    "selection": "#d4d4d4",
+    "track": "#d4d4d4",
+    "shadow": "#0000001f"
+  }
+}

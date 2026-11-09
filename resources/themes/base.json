@@ -1,0 +1,95 @@
+{
+  "font": "Segoe UI",
+  "zoom": 1,
+  "radius": { "large": 6, "small": 4, "toggle": 12 },
+  "launcher": { "background": "background", "divider": "divider" },
+  "app": { "background": "background", "title": "text", "divider": "divider" },
+  "sidebar": { "background": "surface", "title": "muted", "divider": "divider" },
+  "nav": {
+    "text": "muted",
+    "hover": "hover",
+    "hover_text": "text",
+    "current": "selected",
+    "current_text": "text",
+    "count": "faint",
+    "found": "text"
+  },
+  "caption": { "glyph": "muted", "hover": "hover", "close_hover": "hover" },
+  "input": { "text": "text", "placeholder": "faint", "caret": "accent", "selection": "selection", "scope": "muted" },
+  "results": {
+    "name": "text",
+    "match": "accent",
+    "path": "muted",
+    "detail": "muted",
+    "shortcut": "faint",
+    "icon": "faint",
+    "selected": "selected",
+    "picked": "selected",
+    "empty": "muted",
+    "heading": "muted",
+    "loading": "selected"
+  },
+  "header": { "text": "muted", "hover_text": "text", "arrow": "muted" },
+  "status": { "text": "muted", "place": "text", "separator": "faint" },
+  "keys": { "frame": "border", "glyph": "faint", "label": "muted" },
+  "icon_button": { "glyph": "faint", "hover_glyph": "text" },
+  "settings": {
+    "section": "muted",
+    "label": "text",
+    "hint": "muted",
+    "value": "muted",
+    "divider": "divider",
+    "match": "selected",
+    "found": "selection"
+  },
+  "toggle": { "on": "text", "off": "track", "knob": "background" },
+  "button": { "text": "text", "disabled": "faint", "frame": "border", "hover": "hover" },
+  "dropdown": {
+    "text": "text",
+    "glyph": "faint",
+    "frame": "border",
+    "hover": "hover",
+    "menu": "background",
+    "option": "muted",
+    "hover_text": "text",
+    "chosen": "selected",
+    "chosen_text": "text",
+    "check": "text",
+    "note": "faint"
+  },
+  "tooltip": { "background": "background", "text": "text", "frame": "border" },
+  "field": { "frame": "border", "focus": "muted", "glyph": "faint", "note": "muted" },
+  "activity": { "empty": "selected", "full": "text" },
+  "slider": { "track": "track", "fill": "text", "knob": "background", "frame": "border" },
+  "picker": { "frame": "border", "hover": "muted", "knob": "background", "ring": "text" },
+  "windows": {
+    "launcher": {
+      "corners": 0,
+      "opacity": 1,
+      "blur": false,
+      "shadow": [
+        { "color": "shadow", "opacity": 0.28, "y": 8, "blur": 32 },
+        { "color": "shadow", "opacity": 0.14, "y": 1, "blur": 6 }
+      ]
+    },
+    "dialog": { "corners": 0, "opacity": 1, "blur": false, "shadow": [] },
+    "explorer": {
+      "corners": 0,
+      "opacity": 1,
+      "blur": false,
+      "shadow": [
+        { "color": "shadow", "opacity": 0.28, "y": 8, "blur": 32 },
+        { "color": "shadow", "opacity": 0.14, "y": 1, "blur": 6 }
+      ]
+    },
+    "app": {
+      "corners": 0,
+      "opacity": 1,
+      "blur": false,
+      "shadow": [
+        { "color": "shadow", "opacity": 0.28, "y": 8, "blur": 32 },
+        { "color": "shadow", "opacity": 0.14, "y": 1, "blur": 6 }
+      ]
+    }
+  }
+}

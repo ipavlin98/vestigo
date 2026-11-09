@@ -1,0 +1,47 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. Typed "report" in the search bar
+        2. Expected report.docx from Documents
+        3. It isn't in the list
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Vestigo version
+      description: Settings → About, or right-click Vestigo.exe → Properties → Details → Product version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Press Win+R, type `winver`
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: dropdown
+    id: rights
+    attributes:
+      label: Did you allow administrator rights at start?
+      options: ['Yes', 'No', 'Not sure']
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Attach the latest file from `%APPDATA%\Vestigo\logs` or paste the relevant lines. Check it for private paths first.
+      render: text
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or video
+      description: Drag files here if they help to show the problem.

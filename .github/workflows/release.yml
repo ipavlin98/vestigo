@@ -1,0 +1,153 @@
+name: Release
+
+# Publishes v<version> from Cargo.toml: automatically when a merge to main changes the version
+# (the release pull request made by scripts\release.ps1), or by hand from Actions → Release → Run workflow.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [Cargo.toml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Decide whether this commit is a release
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          read_version() { sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1; }
+          version=$(read_version < Cargo.toml)
+          release=true
+          if [ "$EVENT" = push ]; then
+            git fetch --quiet --depth=1 origin "$BEFORE" || true
+            previous=$(git show "$BEFORE:Cargo.toml" 2>/dev/null | read_version)
+            if [ -z "$previous" ] || [ "$previous" = "$version" ]; then release=false; fi
+          fi
+          if [ "$release" = true ] && git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already released. Raise the version with scripts\\release.ps1 first."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - arch: x86
+            target: i686-pc-windows-msvc
+            runner: windows-latest
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\${{ matrix.target }}\release\vestigo.exe dist\Vestigo.exe
+          .\scripts\notices.ps1 -Target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.arch }}
+          path: dist/
+
+  publish:
+    needs: [plan, build]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v7
+        with:
+          path: build
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (!(Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = '${{ needs.plan.outputs.version }}'
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $build = Resolve-Path build
+          New-Item -ItemType Directory -Force out | Out-Null
+          $out = Resolve-Path out
+
+          $both = 'portable\both\Vestigo'
+          New-Item -ItemType Directory -Force $both | Out-Null
+          Copy-Item "$build\x64\Vestigo.exe", "$build\x64\THIRD-PARTY-NOTICES.txt", packaging\portable.txt $both
+          Copy-Item "$build\x86\Vestigo.exe" "$both\Vestigo-x86.exe"
+          Copy-Item LICENSE "$both\LICENSE.txt"
+          Compress-Archive -Path $both -DestinationPath "$out\Vestigo-$version-portable.zip"
+
+          $arm = 'portable\arm64\Vestigo'
+          New-Item -ItemType Directory -Force $arm | Out-Null
+          Copy-Item "$build\arm64\Vestigo.exe", "$build\arm64\THIRD-PARTY-NOTICES.txt", packaging\portable.txt $arm
+          Copy-Item LICENSE "$arm\LICENSE.txt"
+          Compress-Archive -Path $arm -DestinationPath "$out\Vestigo-$version-arm64-portable.zip"
+
+          foreach ($arch in 'x64', 'arm64') {
+            & $iscc /Q "/DVersion=$version" "/DArch=$arch" "/DSource=$build" "/DOutput=$out" packaging\vestigo.iss
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          Push-Location out
+          Get-ChildItem -File | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content -Encoding ascii SHA256SUMS.txt
+          Pop-Location
+
+      - name: Take the release notes from CHANGELOG.md
+        shell: pwsh
+        run: |
+          $version = [regex]::Escape('${{ needs.plan.outputs.version }}')
+          $section = [regex]::Match((Get-Content CHANGELOG.md -Raw), "(?ms)^## \[$version\][^\n]*\n(.*?)(?=^## \[|\z)")
+          $section.Groups[1].Value.Trim() | Set-Content notes.md
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ needs.plan.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Vestigo ${{ needs.plan.outputs.version }}
+          prerelease: ${{ contains(needs.plan.outputs.version, '-') }}
+          body_path: notes.md
+          generate_release_notes: true
+          files: out/*

@@ -1,0 +1,94 @@
+[package]
+name = "vestigo"
+version = "0.1.0"
+edition = "2024"
+description = "Instant file search for Windows with Explorer integration"
+license = "MIT"
+repository = "https://github.com/ipavlin98/vestigo"
+
+[dependencies]
+anyhow = "1"
+encoding_rs = "0.8"
+futures = "0.3"
+gpui = { package = "gpui-unofficial", version = "=1.25.3", default-features = false, features = ["windows-manifest"] }
+gpui_windows = { package = "gpui-windows-gpui-unofficial", version = "=1.25.3", default-features = false }
+image = { version = "0.25", default-features = false }
+jwalk = "0.8"
+log = "0.4"
+flexi_logger = { version = "0.31", default-features = false }
+memchr = "2"
+office_oxide = { version = "0.1", default-features = false }
+parking_lot = "0.12"
+pdf_oxide = { version = "0.3", default-features = false }
+quick-xml = "0.42"
+raw-window-handle = "0.6"
+rayon = "1"
+rustc-hash = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_Packaging_Appx",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
+    "Win32_System_JobObjects",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Pipes",
+    "Win32_System_Registry",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_System_Time",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
+] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
+zstd = "0.13"
+
+[build-dependencies]
+embed-resource = "3"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.gpui-unofficial]
+opt-level = 2
+
+[profile.dev.package.gpui-windows-gpui-unofficial]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[patch.crates-io]
+gpui-unofficial = { path = "vendor/gpui" }
+gpui-windows-gpui-unofficial = { path = "vendor/gpui_windows" }

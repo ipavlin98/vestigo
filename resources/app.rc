@@ -1,0 +1,25 @@
+1 ICON "resources/icon.ico"
+
+1 VERSIONINFO
+FILEVERSION VERSION_NUMBERS
+PRODUCTVERSION VERSION_NUMBERS
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "Vestigo\0"
+            VALUE "FileVersion", VERSION_TEXT
+            VALUE "ProductName", "Vestigo\0"
+            VALUE "ProductVersion", VERSION_TEXT
+            VALUE "InternalName", "vestigo\0"
+            VALUE "OriginalFilename", "vestigo.exe\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

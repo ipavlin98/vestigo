@@ -1,0 +1,32 @@
+{
+  "name": "Dracula",
+  "base": "dark",
+  "palette": {
+    "current_line": "#44475a",
+    "foreground": "#f8f8f2",
+    "comment": "#6272a4",
+    "cyan": "#8be9fd",
+    "green": "#50fa7b",
+    "pink": "#ff79c6",
+    "purple": "#bd93f9",
+
+    "background": "#282a36",
+    "surface": "#21222c",
+    "text": "foreground",
+    "muted": "#a9aecb",
+    "faint": "comment",
+    "accent": "pink",
+    "selected": "#3e4153",
+    "hover": "#353746",
+    "border": "current_line",
+    "divider": "#393b4c",
+    "selection": "comment",
+    "track": "current_line",
+    "shadow": "#0000001f"
+  },
+  "input": { "caret": "purple" },
+  "nav": { "current_text": "purple" },
+  "header": { "arrow": "purple" },
+  "toggle": { "on": "purple", "knob": "foreground" },
+  "dropdown": { "glyph": "purple", "check": "purple", "chosen_text": "purple" }
+}

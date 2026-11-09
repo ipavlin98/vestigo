@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2b2b"/>
+      <stop offset="1" stop-color="#0b0b0b"/>
+    </linearGradient>
+    <linearGradient id="trace" gradientUnits="userSpaceOnUse" x1="78" y1="72" x2="117" y2="139">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.72"/>
+    </linearGradient>
+    <clipPath id="v">
+      <path d="M56 72h44l28 48.2 28-48.2h44l-72 124z"/>
+    </clipPath>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#tile)"/>
+  <rect x="9" y="9" width="238" height="238" rx="55" fill="none" stroke="#fff" stroke-opacity="0.12" stroke-width="2"/>
+  <g clip-path="url(#v)">
+    <path d="M56 72h44l72 124h-44z" fill="url(#trace)"/>
+    <path d="M156 72h44l-72 124H84z" fill="#fff"/>
+  </g>
+</svg>

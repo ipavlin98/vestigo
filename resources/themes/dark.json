@@ -1,0 +1,18 @@
+{
+  "name": "Dark",
+  "palette": {
+    "background": "#000000",
+    "surface": "#000000",
+    "text": "#ededed",
+    "muted": "#a1a1a1",
+    "faint": "#707070",
+    "accent": "#ffffff",
+    "selected": "#1c1c1c",
+    "hover": "#111111",
+    "border": "#282828",
+    "divider": "#1f1f1f",
+    "selection": "#3d3d3d",
+    "track": "#3d3d3d",
+    "shadow": "#0000001f"
+  }
+}
