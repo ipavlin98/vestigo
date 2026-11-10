@@ -80,7 +80,7 @@ jobs:
           Copy-Item target\${{ matrix.target }}\release\vestigo.exe dist\Vestigo.exe
           .\scripts\notices.ps1 -Target ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.arch }}
           path: dist/
