@@ -188,6 +188,34 @@ impl Language {
         }
     }
 
+    pub(crate) fn update_available(self, version: &str) -> String {
+        match self {
+            Self::English => format!("Version {version} is available"),
+            Self::Russian => format!("Доступна версия {version}"),
+        }
+    }
+
+    pub(crate) fn update_announced(self, version: &str) -> String {
+        match self {
+            Self::English => format!("Vestigo {version} is available"),
+            Self::Russian => format!("Доступен Vestigo {version}"),
+        }
+    }
+
+    pub(crate) fn update_check_failed(self, reason: &str) -> String {
+        match self {
+            Self::English => format!("Couldn't check for updates: {reason}"),
+            Self::Russian => format!("Не удалось проверить обновления: {reason}"),
+        }
+    }
+
+    pub(crate) fn update_failed(self, reason: &str) -> String {
+        match self {
+            Self::English => format!("Couldn't update: {reason}"),
+            Self::Russian => format!("Не удалось обновить: {reason}"),
+        }
+    }
+
     pub(crate) fn milliseconds(self, time: std::time::Duration) -> String {
         let value = self.decimal(time.as_secs_f64() * 1000.0);
         match self {
@@ -654,6 +682,19 @@ pub(crate) struct Strings {
     pub(crate) measure: &'static str,
     pub(crate) opens_per_day: &'static str,
     pub(crate) opens_per_day_hint: &'static str,
+    pub(crate) updates: &'static str,
+    pub(crate) updates_hint: &'static str,
+    pub(crate) check_updates: &'static str,
+    pub(crate) install_update: &'static str,
+    pub(crate) update_checking: &'static str,
+    pub(crate) update_latest: &'static str,
+    pub(crate) update_downloading: &'static str,
+    pub(crate) update_offline: &'static str,
+    pub(crate) update_timed_out: &'static str,
+    pub(crate) update_damaged: &'static str,
+    pub(crate) auto_updates: &'static str,
+    pub(crate) auto_updates_hint: &'static str,
+    pub(crate) update_notice: &'static str,
     pub(crate) activity: &'static str,
     pub(crate) suggestion_sources: &'static str,
     pub(crate) automation: &'static str,

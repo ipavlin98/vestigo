@@ -183,6 +183,7 @@ pub(crate) struct Settings {
     pub(crate) disabled_apps: Vec<String>,
     pub(crate) preview: Preview,
     pub(crate) marks: BTreeMap<char, String>,
+    pub(crate) check_updates: bool,
 }
 
 impl Default for Settings {
@@ -215,6 +216,7 @@ impl Default for Settings {
             disabled_apps: Vec::new(),
             preview: Preview::default(),
             marks: BTreeMap::new(),
+            check_updates: true,
         }
     }
 }
@@ -235,6 +237,7 @@ pub(crate) struct Changes {
     pub(crate) actions: bool,
     pub(crate) recent: bool,
     pub(crate) suggestions: bool,
+    pub(crate) updates: bool,
 }
 
 impl Settings {
@@ -254,6 +257,7 @@ impl Settings {
             actions: self.actions != before.actions,
             recent: self.recent != before.recent,
             suggestions: self.suggestions != before.suggestions,
+            updates: self.check_updates != before.check_updates,
         }
     }
 }
@@ -525,6 +529,7 @@ mod tests {
         assert_eq!(settings.commands, CommandSpec::defaults());
         assert_eq!(settings.web, WebSearch::defaults());
         assert!(settings.tray && settings.web_suggestions && settings.suggestions.history);
+        assert!(settings.check_updates);
     }
 
     #[test]

@@ -27,6 +27,7 @@ use crate::ui::{
     self, Choice, Confirm, DETAIL_LINE, DETAIL_SIZE, Dismiss, Edge, GUTTER, INSET, NAME_LINE, Picker, SelectNext,
     SelectPrevious, Tip, divider, edge_fades, edge_scroll, glide, icon_button, path_label, scroll_to_child,
 };
+use crate::update::Updates;
 use diagnose::Diagnostics;
 use find::{Finding, Step};
 use form::{Field, Form};
@@ -208,6 +209,7 @@ impl SettingsPage {
             ui::paint_changes_of(&finder, cx),
             cx.subscribe_in(&finder, window, |this, _, _: &Changed, window, cx| this.find(window, cx)),
             cx.observe_global::<Status>(|this, cx| this.status_changed(cx)),
+            cx.observe_global::<Updates>(|_, cx| cx.notify()),
         ];
         let theme_editor = cx.new(ThemeEditor::new);
         subscriptions.push(cx.observe(&theme_editor, |_, _, cx| cx.notify()));

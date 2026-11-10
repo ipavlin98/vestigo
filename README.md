@@ -45,6 +45,10 @@ then *Run anyway*.
 
 Once it's running, press **Ctrl twice** or **Alt+Space**.
 
+Updates: Vestigo checks GitHub at startup and once a day and tells you when a new version is out (a tray notification
+and *Settings → About*). Nothing is installed until you click *Update*: the installed copy runs the new installer
+silently, the portable one replaces its files in place; both restart on their own. Turn the check off in *About*.
+
 ## What it can do
 
 <table>

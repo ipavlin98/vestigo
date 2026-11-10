@@ -6,12 +6,13 @@ use super::theme_editor::cluster;
 use super::{Block, Folds, Heading, Menu, ROW_PADDING, Row, change, confirmed, section, setting, setting_with};
 use crate::i18n::{Language, LanguageChoice, Strings};
 use crate::index::{Focus, Status};
-use crate::platform;
+use crate::platform::{self, Event};
 use crate::search::Query;
 use crate::settings::{self, History, Settings, Triggers, Zoom};
 use crate::theme::rem;
 use crate::theme::{Appearance, Catalog, Entry, Origin, Theme, ThemeChoice};
 use crate::ui::{self, Choice, Command, button, toggle};
+use crate::update::{Trouble, Updates};
 use gpui::{AnyElement, AppContext, BorrowAppContext, Context, Hsla, Rgba, SharedString, Window, div, prelude::*};
 
 const SPEED_QUERIES: [&str; 4] = ["a", "report", "setup exe", "*.dll"];
@@ -278,11 +279,15 @@ impl SettingsPage {
         let month: u32 = days.iter().rev().take(AVERAGE_DAYS).sum();
         let average = language.decimal(f64::from(month) / AVERAGE_DAYS as f64);
         let today = (clock.now + clock.offset).div_euclid(DAY);
+        let check_updates = toggle("check-updates", cx.global::<Settings>().check_updates, theme)
+            .on_click(|_, _, cx| change(cx, |settings| settings.check_updates = !settings.check_updates));
         vec![
             section(
                 Heading::Plain,
                 vec![
                     setting_with(strings.version, Vec::new(), value(version)),
+                    updates(cx.global::<Updates>(), theme, language),
+                    setting(strings.auto_updates, strings.auto_updates_hint, check_updates),
                     setting_with(strings.indexed, Vec::new(), value(language.items(status.entries).into())),
                     setting_with(strings.search_speed, vec![speed.into()], measure),
                     setting(strings.opens_per_day, strings.opens_per_day_hint, value(average.into())),
@@ -291,6 +296,30 @@ impl SettingsPage {
             section(Heading::Title(strings.activity), vec![Row::plain(activity(&days, today, theme))]),
         ]
     }
+}
+
+fn updates(updates: &Updates, theme: &Theme, language: Language) -> Row {
+    let strings = language.strings();
+    let reason = |trouble: &Trouble| match trouble {
+        Trouble::Offline => strings.update_offline.to_owned(),
+        Trouble::TimedOut => strings.update_timed_out.to_owned(),
+        Trouble::Damaged => strings.update_damaged.to_owned(),
+        Trouble::Failed(message) => message.clone(),
+    };
+    let (hint, install, enabled) = match updates {
+        Updates::Idle => (strings.updates_hint.to_owned(), false, true),
+        Updates::Checking => (strings.update_checking.to_owned(), false, false),
+        Updates::Latest => (strings.update_latest.to_owned(), false, true),
+        Updates::CheckFailed(trouble) => (language.update_check_failed(&reason(trouble)), false, true),
+        Updates::Available(release) => (language.update_available(&release.version.to_string()), true, true),
+        Updates::Downloading(_) => (strings.update_downloading.to_owned(), true, false),
+        Updates::InstallFailed(_, trouble) => (language.update_failed(&reason(trouble)), true, true),
+    };
+    let label = if install { strings.install_update } else { strings.check_updates };
+    let control = button("updates", label, enabled, theme, move |_, _, _| {
+        platform::send(if install { Event::InstallUpdate } else { Event::CheckUpdates })
+    });
+    setting_with(strings.updates, vec![hint.into()], control)
 }
 
 fn activity(days: &[u32], today: i64, theme: &Theme) -> AnyElement {

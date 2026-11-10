@@ -76,6 +76,7 @@ Name: "{autodesktop}\Vestigo"; Filename: "{app}\Vestigo.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\Vestigo.exe"; Description: "{cm:LaunchProgram,Vestigo}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Vestigo.exe"; Flags: nowait; Check: Relaunch
 
 [UninstallRun]
 Filename: "{sys}\schtasks.exe"; Parameters: "/delete /tn Vestigo /f"; Flags: runhidden; RunOnceId: "StartWithWindows"
@@ -95,6 +96,11 @@ begin
     '-NoProfile -Command "Get-Process Vestigo -ErrorAction SilentlyContinue | Where-Object Path -eq ''' + Exe +
     ''' | Stop-Process -Force"',
     '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+function Relaunch(): Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:relaunch|0}') = '1');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
