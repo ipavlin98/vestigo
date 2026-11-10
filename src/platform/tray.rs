@@ -91,41 +91,41 @@ pub(super) fn on_message(hwnd: HWND, lparam: LPARAM) {
 
 pub(super) fn announce(title: &str, text: &str) -> bool {
     let Some(hwnd) = *WINDOW.lock() else { return false };
-    let mut data = NOTIFYICONDATAW {
+    let data = NOTIFYICONDATAW {
         cbSize: size_of::<NOTIFYICONDATAW>() as u32,
         hWnd: HWND(hwnd as _),
         uID: ICON_ID,
         uFlags: NIF_INFO,
         dwInfoFlags: NIIF_RESPECT_QUIET_TIME,
+        szInfoTitle: filled(title),
+        szInfo: filled(text),
         ..Default::default()
     };
-    fill(&mut data.szInfoTitle, title);
-    fill(&mut data.szInfo, text);
     unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) }.as_bool()
 }
 
 fn notify(hwnd: HWND, action: windows::Win32::UI::Shell::NOTIFY_ICON_MESSAGE) {
-    let mut data = NOTIFYICONDATAW {
+    let data = NOTIFYICONDATAW {
         cbSize: size_of::<NOTIFYICONDATAW>() as u32,
         hWnd: hwnd,
         uID: ICON_ID,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
         uCallbackMessage: TRAY_MESSAGE,
         hIcon: icon(),
+        szTip: filled(LANGUAGE.lock().strings().tooltip),
         ..Default::default()
     };
-    fill(&mut data.szTip, LANGUAGE.lock().strings().tooltip);
     if !unsafe { Shell_NotifyIconW(action, &data) }.as_bool() {
         log::debug!("The tray icon update was refused");
     }
 }
 
-fn fill(field: &mut [u16], text: &str) {
-    let text: Vec<u16> = text.encode_utf16().collect();
-    let length = text.len().min(field.len().saturating_sub(1));
-    if let (Some(target), Some(source)) = (field.get_mut(..length), text.get(..length)) {
-        target.copy_from_slice(source);
+fn filled<const N: usize>(text: &str) -> [u16; N] {
+    let mut field = [0; N];
+    for (target, unit) in field.iter_mut().take(N.saturating_sub(1)).zip(text.encode_utf16()) {
+        *target = unit;
     }
+    field
 }
 
 fn show_menu(hwnd: HWND) {
