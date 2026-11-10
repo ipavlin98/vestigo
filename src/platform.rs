@@ -11,6 +11,7 @@ mod running;
 mod shell;
 mod tray;
 mod watch;
+mod web;
 mod window;
 mod worker;
 
@@ -33,6 +34,7 @@ pub(crate) use watch::{
     Remote, configure, note_ctrl_click, pause_hotkeys, signal_running_instance, start as start_watching,
     stop as stop_watching,
 };
+pub(crate) use web::{Transfer, download, fetch};
 pub(crate) use window::{
     Anchor, Area, Caption, CardLayout, Entrance, Layout, MenuAt, MenuSpot, PointerMove, Silhouette, app_window_hidden,
     app_window_in_sight, app_window_on_hold, app_window_revealed, app_window_silhouette, attach, attach_app_window,
@@ -51,13 +53,17 @@ use futures::channel::mpsc::UnboundedSender;
 use std::cell::Cell;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, FILETIME, GetLastError, HANDLE, HWND, SYSTEMTIME};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use windows::Win32::Foundation::{
+    CloseHandle, ERROR_ALREADY_EXISTS, ERROR_FILE_NOT_FOUND, FILETIME, GetLastError, HANDLE, HWND, SYSTEMTIME,
+};
 use windows::Win32::Globalization::GetUserDefaultUILanguage;
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
-use windows::Win32::System::Threading::{CreateMutexW, GetCurrentProcess, OpenProcessToken};
+use windows::Win32::System::Threading::{
+    CreateMutexW, GetCurrentProcess, OpenMutexW, OpenProcessToken, SYNCHRONIZATION_SYNCHRONIZE,
+};
 use windows::Win32::System::Time::{
     FileTimeToSystemTime, GetTimeZoneInformation, SystemTimeToTzSpecificLocalTime, TIME_ZONE_INFORMATION,
 };
@@ -74,6 +80,8 @@ const DRIVE_RAMDISK: u32 = 6;
 const LANG_RUSSIAN: u16 = 0x19;
 const PRIMARY_LANGUAGE_MASK: u16 = 0x3ff;
 const MUTEX_NAME: &str = "Local\\Vestigo.instance";
+const PREVIOUS_EXIT_WAIT: Duration = Duration::from_secs(30);
+const PREVIOUS_EXIT_POLL: Duration = Duration::from_millis(100);
 const FILETIME_TICK_NS: u128 = 100;
 const FILETIME_UNIX_EPOCH: u128 = 116_444_736_000_000_000;
 const ZONE_STANDARD: u32 = 1;
@@ -155,6 +163,9 @@ pub(crate) enum Event {
     DeleteContentCache,
     OpenWindow,
     OpenSettings,
+    CheckUpdates,
+    InstallUpdate,
+    ShowUpdate,
     Quit,
 }
 
@@ -236,6 +247,27 @@ pub(crate) fn single_instance() -> Option<Instance> {
         }
         Some(Instance(mutex))
     }
+}
+
+pub(crate) fn await_previous_exit() {
+    let deadline = Instant::now() + PREVIOUS_EXIT_WAIT;
+    while previous_running() && Instant::now() < deadline {
+        std::thread::sleep(PREVIOUS_EXIT_POLL);
+    }
+}
+
+fn previous_running() -> bool {
+    match unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, false, &HSTRING::from(MUTEX_NAME)) } {
+        Ok(mutex) => {
+            let _ = unsafe { CloseHandle(mutex) };
+            true
+        }
+        Err(error) => error.code() != ERROR_FILE_NOT_FOUND.to_hresult(),
+    }
+}
+
+pub(crate) fn announce(title: &str, text: &str) -> bool {
+    tray::announce(title, text)
 }
 
 pub(crate) fn is_elevated() -> bool {

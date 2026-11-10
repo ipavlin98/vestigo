@@ -6,7 +6,8 @@ use std::sync::OnceLock;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_RESPECT_QUIET_TIME, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    NIN_BALLOONUSERCLICK, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HICON, HMENU, IMAGE_ICON,
@@ -83,8 +84,24 @@ pub(super) fn on_message(hwnd: HWND, lparam: LPARAM) {
     match (lparam.0 as u32) & 0xffff {
         WM_LBUTTONUP => send(Event::OpenWindow),
         WM_RBUTTONUP | WM_CONTEXTMENU => show_menu(hwnd),
+        NIN_BALLOONUSERCLICK => send(Event::ShowUpdate),
         _ => {}
     }
+}
+
+pub(super) fn announce(title: &str, text: &str) -> bool {
+    let Some(hwnd) = *WINDOW.lock() else { return false };
+    let mut data = NOTIFYICONDATAW {
+        cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+        hWnd: HWND(hwnd as _),
+        uID: ICON_ID,
+        uFlags: NIF_INFO,
+        dwInfoFlags: NIIF_RESPECT_QUIET_TIME,
+        ..Default::default()
+    };
+    fill(&mut data.szInfoTitle, title);
+    fill(&mut data.szInfo, text);
+    unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) }.as_bool()
 }
 
 fn notify(hwnd: HWND, action: windows::Win32::UI::Shell::NOTIFY_ICON_MESSAGE) {
@@ -97,15 +114,17 @@ fn notify(hwnd: HWND, action: windows::Win32::UI::Shell::NOTIFY_ICON_MESSAGE) {
         hIcon: icon(),
         ..Default::default()
     };
-    let tip: Vec<u16> = LANGUAGE.lock().strings().tooltip.encode_utf16().collect();
-    let mut text = data.szTip;
-    let length = tip.len().min(text.len() - 1);
-    if let (Some(target), Some(source)) = (text.get_mut(..length), tip.get(..length)) {
-        target.copy_from_slice(source);
-    }
-    data.szTip = text;
+    fill(&mut data.szTip, LANGUAGE.lock().strings().tooltip);
     if !unsafe { Shell_NotifyIconW(action, &data) }.as_bool() {
         log::debug!("The tray icon update was refused");
+    }
+}
+
+fn fill(field: &mut [u16], text: &str) {
+    let text: Vec<u16> = text.encode_utf16().collect();
+    let length = text.len().min(field.len().saturating_sub(1));
+    if let (Some(target), Some(source)) = (field.get_mut(..length), text.get(..length)) {
+        target.copy_from_slice(source);
     }
 }
 

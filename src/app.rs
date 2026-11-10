@@ -1,8 +1,10 @@
 mod api;
 mod menu;
 mod transition;
+mod updates;
 
 use transition::{Side, Transition};
+use updates::{Check, Updater};
 
 use crate::app_window::{self, AppWindow, Page};
 use crate::index::{Drive, Index, Ranking};
@@ -97,6 +99,7 @@ struct Shell {
     refreshed: Option<Instant>,
     settings_save: Option<Task<()>>,
     history_save: Option<Task<()>>,
+    updater: Updater,
     _subscriptions: Vec<Subscription>,
     _events: Task<()>,
 }
@@ -161,10 +164,12 @@ impl Shell {
             refreshed: None,
             settings_save: None,
             history_save: None,
+            updater: Updater::default(),
             _subscriptions: subscriptions,
             _events: events,
         };
         shell.sync_api();
+        shell.schedule_updates(shell.saved.check_updates, cx);
         shell
     }
 
@@ -184,6 +189,9 @@ impl Shell {
             Event::DeleteContentCache => self.index.delete_content(),
             Event::OpenWindow => self.open_app_window(Page::Search, None, cx),
             Event::OpenSettings => self.open_app_window(Page::SETTINGS, None, cx),
+            Event::CheckUpdates => self.check_updates(Check::Manual, cx),
+            Event::InstallUpdate => self.install_update(cx),
+            Event::ShowUpdate => self.show_update(cx),
             Event::Quit => cx.quit(),
         }
     }
@@ -413,6 +421,9 @@ impl Shell {
         }
         if changes.recent {
             self.refresh_launcher(cx);
+        }
+        if changes.updates {
+            self.schedule_updates(settings.check_updates, cx);
         }
         if let Some(handle) = self.app_window {
             let _ = handle.update(cx, |app_window, window, cx| app_window.settings_changed(changes, window, cx));

@@ -16,4 +16,6 @@ The first public release.
 - The Vestigo window: kinds with counts, date filter, sortable columns, preview pane.
 - Five built-in themes and a theme editor.
 - English and Russian interface.
+- Updates from GitHub: checked at startup and once a day, installed with one click, for the installed and the portable
+  copy alike.
 - Builds for x64, x86 and ARM64.

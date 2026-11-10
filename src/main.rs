@@ -13,6 +13,7 @@ mod search;
 mod settings;
 mod theme;
 mod ui;
+mod update;
 
 use futures::channel::mpsc;
 use gpui::{App, Application, TextRenderingMode};
@@ -22,7 +23,7 @@ use settings::{History, Settings};
 use std::{rc::Rc, sync::Arc};
 use theme::Catalog;
 
-const ELEVATED_FLAG: &str = "--elevated";
+pub(crate) const ELEVATED_FLAG: &str = "--elevated";
 const EXTRACT_FLAG: &str = "--extract";
 const MORPH_FLAG: &str = "--morph";
 const INDEX_DIR: &str = "index";
@@ -44,6 +45,9 @@ fn main() {
         }
         _ => {}
     }
+    if std::env::args().any(|argument| argument == update::WAIT_FLAG) {
+        platform::await_previous_exit();
+    }
     let remote = std::env::args().find_map(|argument| Remote::from_flag(&argument)).unwrap_or(Remote::Toggle);
     if platform::signal_running_instance(remote) || remote == Remote::Quit {
         return;
@@ -60,6 +64,7 @@ fn main() {
     let cache = settings::adopt_legacy_cache();
     let _logger = start_logging();
     adopt_legacy(data, cache);
+    update::sweep();
     if !elevated {
         log::warn!("Running without administrator rights: drives are walked instead of read from the MFT");
     }
@@ -113,6 +118,7 @@ fn run() {
                 cx.set_global(settings);
                 cx.set_global(catalog);
                 cx.set_global(History::load());
+                cx.set_global(update::Updates::default());
 
                 app::start(shown, receiver, cx);
             })
