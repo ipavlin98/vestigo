@@ -271,6 +271,7 @@ impl Shell {
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
         self.refreshed = Some(Instant::now());
+        platform::keep_resident();
         ui::publish_status(&self.index, cx);
         self.refresh_launcher(cx);
         if let Some(handle) = self.app_window {

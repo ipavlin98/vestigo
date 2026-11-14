@@ -61,6 +61,10 @@ use windows::Win32::Globalization::GetUserDefaultUILanguage;
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
+use windows::Win32::System::Memory::{
+    QUOTA_LIMITS_HARDWS_MAX_DISABLE, QUOTA_LIMITS_HARDWS_MIN_DISABLE, SetProcessWorkingSetSizeEx,
+};
+use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows::Win32::System::Threading::{
     CreateMutexW, GetCurrentProcess, OpenMutexW, OpenProcessToken, SYNCHRONIZATION_SYNCHRONIZE,
 };
@@ -287,6 +291,20 @@ pub(crate) fn is_elevated() -> bool {
         );
         let _ = CloseHandle(token);
         queried.is_ok() && elevation.TokenIsElevated != 0
+    }
+}
+
+pub(crate) fn keep_resident() {
+    let mut counters = PROCESS_MEMORY_COUNTERS::default();
+    let size = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+    unsafe {
+        let process = GetCurrentProcess();
+        if !K32GetProcessMemoryInfo(process, &mut counters, size).as_bool() {
+            return;
+        }
+        let resident = counters.WorkingSetSize;
+        let soft = QUOTA_LIMITS_HARDWS_MIN_DISABLE | QUOTA_LIMITS_HARDWS_MAX_DISABLE;
+        let _ = SetProcessWorkingSetSizeEx(process, resident, resident.saturating_mul(2), soft);
     }
 }
 
