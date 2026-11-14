@@ -2,6 +2,10 @@
 
 What changed in each release of Vestigo. The newest version is on top.
 
+## [0.1.1] — 2026-11-14
+
+- The search window and the bar in Explorer open as fast after Vestigo has been idle for a while as they do right after the last use: Windows no longer pages out its memory while it waits.
+
 ## [0.1.0] — 2026-11-10
 
 The first public release.
