@@ -1,6 +1,6 @@
 [package]
 name = "vestigo"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Instant file search for Windows with Explorer integration"
 license = "MIT"
