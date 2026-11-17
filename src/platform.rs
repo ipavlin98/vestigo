@@ -36,12 +36,12 @@ pub(crate) use watch::{
 };
 pub(crate) use web::{Transfer, download, fetch};
 pub(crate) use window::{
-    Anchor, Area, Caption, CardLayout, Entrance, Layout, MenuAt, MenuSpot, PointerMove, Silhouette, app_window_hidden,
-    app_window_in_sight, app_window_on_hold, app_window_revealed, app_window_silhouette, attach, attach_app_window,
-    attach_card, attach_menu, attach_transition, begin_transition, close_menu, end_transition, hide, hide_app_window,
-    hide_menus, hold_app_window, note_change, note_placing, paint_transition, panel_silhouette, place, place_card,
-    place_menu, pointer_move, pointer_on_panel, release_app_window, room, show, show_app_window, style_app_window,
-    veil_app_window, veil_panel,
+    Anchor, Area, Caption, CardLayout, Entrance, Layout, MenuAt, MenuSpot, PointerMove, Room, Silhouette,
+    app_window_hidden, app_window_in_sight, app_window_on_hold, app_window_revealed, app_window_silhouette, attach,
+    attach_app_window, attach_card, attach_menu, attach_transition, begin_transition, close_menu, end_transition, hide,
+    hide_app_window, hide_menus, hold_app_window, note_change, note_placing, paint_transition, panel_silhouette, place,
+    place_card, place_menu, pointer_move, pointer_on_panel, release_app_window, room, show, show_app_window,
+    style_app_window, veil_app_window, veil_panel,
 };
 pub(crate) use worker::{enter_background, spawn_extractor};
 

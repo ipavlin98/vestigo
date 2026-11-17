@@ -1,6 +1,6 @@
 use super::view;
 use crate::index::Hit;
-use crate::platform::{self, Anchor, Entrance, Host, HostKind, RunningApp};
+use crate::platform::{self, Anchor, Entrance, Host, HostKind, Room, RunningApp};
 use crate::settings::Settings;
 use crate::theme::{Chrome, Theme};
 use crate::ui::{self, Command};
@@ -17,6 +17,7 @@ pub(super) enum Mode {
 pub(super) enum Side {
     Below,
     Above,
+    Over,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,13 +39,8 @@ impl Mode {
     pub(super) fn docked(host: Host, cx: &App) -> Self {
         match host.kind {
             HostKind::Dialog => {
-                let room = platform::room(host, ui::zoom(cx));
-                let below = view::docked_rows_within(room.below);
-                if below == view::MAX_ROWS || room.below >= room.above {
-                    Self::Dialog(host, Side::Below, below)
-                } else {
-                    Self::Dialog(host, Side::Above, view::docked_rows_within(room.above))
-                }
+                let (side, rows) = dialog_side(platform::room(host, ui::zoom(cx)));
+                Self::Dialog(host, side, rows)
             }
             HostKind::Explorer | HostKind::Desktop => Self::Explorer(host),
         }
@@ -69,6 +65,7 @@ impl Mode {
             Self::Launcher => settings.position.map_or(Anchor::Center, Anchor::At),
             Self::Dialog(host, Side::Below, _) => Anchor::BelowHost(host),
             Self::Dialog(host, Side::Above, _) => Anchor::AboveHost(host),
+            Self::Dialog(host, Side::Over, _) => Anchor::OverHost(host),
             Self::Explorer(host) => Anchor::InsideHost(host),
         }
     }
@@ -83,7 +80,7 @@ impl Mode {
     pub(super) fn chrome(self, theme: &Theme) -> Chrome {
         match self {
             Self::Launcher => theme.windows.launcher.clone(),
-            Self::Dialog(_, Side::Below, _) => theme.windows.dialog.clone(),
+            Self::Dialog(_, Side::Below | Side::Over, _) => theme.windows.dialog.clone(),
             Self::Dialog(_, Side::Above, _) => {
                 let chrome = &theme.windows.dialog;
                 Chrome { corners: chrome.corners.flipped(), ..chrome.clone() }
@@ -108,3 +105,18 @@ impl Mode {
         }
     }
 }
+
+fn dialog_side(room: Room) -> (Side, usize) {
+    let below = view::docked_rows_within(room.below);
+    let above = view::docked_rows_within(room.above);
+    if below == view::MAX_ROWS || (below > 0 && room.below >= room.above) {
+        (Side::Below, below)
+    } else if above > 0 {
+        (Side::Above, above)
+    } else {
+        (Side::Over, view::MAX_ROWS)
+    }
+}
+
+#[cfg(test)]
+mod tests;
