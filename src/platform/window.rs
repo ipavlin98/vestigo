@@ -94,6 +94,7 @@ pub(crate) enum Entrance {
 pub(crate) struct Layout {
     pub(crate) width: f32,
     pub(crate) height: f32,
+    pub(crate) bar: f32,
     pub(crate) panel_top: f32,
     pub(crate) panel_height: f32,
     pub(crate) grip: f32,
@@ -163,6 +164,7 @@ pub(crate) enum Anchor {
     At(Position),
     BelowHost(Host),
     AboveHost(Host),
+    OverHost(Host),
     InsideHost(Host),
 }
 
@@ -346,7 +348,8 @@ pub(crate) fn place(anchor: Anchor, layout: Layout) {
     prompt::placed();
     let Some(hwnd) = ours() else { return };
     let (window, scale) = position(hwnd, anchor, &layout);
-    let docked = matches!(anchor, Anchor::BelowHost(_) | Anchor::AboveHost(_) | Anchor::InsideHost(_));
+    let docked =
+        matches!(anchor, Anchor::BelowHost(_) | Anchor::AboveHost(_) | Anchor::OverHost(_) | Anchor::InsideHost(_));
     DOCKED.set(docked.then(|| (anchor, layout.clone())));
     let ratio = scale * zoom_at(layout.zoom, scale);
     let top = window.top + physical(layout.panel_top, ratio);
@@ -406,7 +409,7 @@ fn position(hwnd: HWND, anchor: Anchor, layout: &Layout) -> (RECT, f32) {
         Anchor::At(position) => {
             Some(RECT { left: position.x, top: position.y, right: position.x + 1, bottom: position.y + 1 })
         }
-        Anchor::BelowHost(host) | Anchor::AboveHost(host) => Some(frame(host.hwnd())),
+        Anchor::BelowHost(host) | Anchor::AboveHost(host) | Anchor::OverHost(host) => Some(frame(host.hwnd())),
         Anchor::InsideHost(host) => Some(inside(host)),
     };
     let monitor = match target {
@@ -421,15 +424,17 @@ fn position(hwnd: HWND, anchor: Anchor, layout: &Layout) -> (RECT, f32) {
         (Anchor::Current | Anchor::At(_), Some(rect)) => (rect.left, rect.top),
         (Anchor::BelowHost(_), Some(rect)) => (rect.left + (rect.right - rect.left - w) / 2, rect.bottom),
         (Anchor::AboveHost(_), Some(rect)) => (rect.left + (rect.right - rect.left - w) / 2, rect.top - h),
+        (Anchor::OverHost(_), Some(rect)) => {
+            (rect.left + (rect.right - rect.left - w) / 2, rect.bottom + physical(layout.bar, ratio) - h)
+        }
         (Anchor::InsideHost(_), Some(rect)) => (rect.right - w, rect.bottom - h),
         _ => (work.left + (work.right - work.left - w) / 2, default_top(work)),
     };
     let x = x.clamp(work.left, (work.right - w).max(work.left));
+    let panel = (physical(layout.panel_top, ratio), physical(layout.panel_height, ratio));
     let y = match anchor {
-        Anchor::BelowHost(_) | Anchor::AboveHost(_) => {
-            let panel = (physical(layout.panel_top, ratio), physical(layout.panel_height, ratio));
-            panel_on_screen(y, panel, work)
-        }
+        Anchor::BelowHost(_) | Anchor::AboveHost(_) => panel_on_screen(y, panel, work),
+        Anchor::OverHost(_) => panel_on_screen(y, panel, monitor_area(monitor)),
         Anchor::Center | Anchor::Current | Anchor::At(_) | Anchor::InsideHost(_) => {
             y.clamp(work.top, (work.bottom - h).max(work.top))
         }
@@ -665,8 +670,16 @@ fn scale(monitor: HMONITOR) -> f32 {
 }
 
 fn work_area(monitor: HMONITOR) -> RECT {
+    monitor_info(monitor).rcWork
+}
+
+fn monitor_area(monitor: HMONITOR) -> RECT {
+    monitor_info(monitor).rcMonitor
+}
+
+fn monitor_info(monitor: HMONITOR) -> MONITORINFO {
     let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
-    if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() { info.rcWork } else { RECT::default() }
+    if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() { info } else { MONITORINFO::default() }
 }
 
 fn physical(value: f32, ratio: f32) -> i32 {

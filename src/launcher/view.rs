@@ -66,7 +66,7 @@ const LAUNCHER: Metrics = Metrics {
 };
 const DOCKED: Metrics = Metrics {
     width: 560.0,
-    input: 40.0,
+    input: 36.0,
     query: NAME_SIZE,
     query_line: NAME_LINE,
     row: 36.0,
@@ -124,6 +124,7 @@ pub(super) fn layout(mode: Mode, rows: usize, row: f32, footer: bool, chrome: Ch
     Layout {
         width: metrics.width,
         height: panel_height_of(mode, MAX_ROWS, metrics.row, true),
+        bar: metrics.input,
         panel_top,
         panel_height,
         grip: if footer && mode == Mode::Launcher { metrics.footer } else { 0.0 },
@@ -177,7 +178,7 @@ enum Growth {
 fn growth(mode: Mode) -> Growth {
     match mode {
         Mode::Launcher | Mode::Dialog(_, Side::Below, _) => Growth::Down,
-        Mode::Dialog(_, Side::Above, _) | Mode::Explorer(_) => Growth::Up,
+        Mode::Dialog(_, Side::Above | Side::Over, _) | Mode::Explorer(_) => Growth::Up,
     }
 }
 
@@ -440,11 +441,11 @@ mod tests {
 
     #[test]
     fn a_docked_list_keeps_only_the_rows_that_fit_beside_the_dialog() {
-        assert_eq!(docked_rows_within(368.0), 8);
+        assert_eq!(docked_rows_within(364.0), 8);
         assert_eq!(docked_rows_within(1000.0), 8);
-        assert_eq!(docked_rows_within(367.0), 7);
-        assert_eq!(docked_rows_within(116.0), 1);
-        assert_eq!(docked_rows_within(115.0), 0);
+        assert_eq!(docked_rows_within(363.0), 7);
+        assert_eq!(docked_rows_within(112.0), 1);
+        assert_eq!(docked_rows_within(111.0), 0);
     }
 
     #[test]
