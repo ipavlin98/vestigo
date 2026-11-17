@@ -2,6 +2,11 @@
 
 What changed in each release of Vestigo. The newest version is on top.
 
+## [0.1.2] — 2026-11-17
+
+- A maximized Open or Save dialog, or one with no room above or below it, now gets the search bar right under its bottom edge and the results over the dialog, instead of a bar pushed into the dialog with no results.
+- The search bar under dialogs and in Explorer is a little lower, as tall as its result rows.
+
 ## [0.1.1] — 2026-11-14
 
 - The search window and the bar in Explorer open as fast after Vestigo has been idle for a while as they do right after the last use: Windows no longer pages out its memory while it waits.
