@@ -1,2 +1,0 @@
-patch
-- The search window and the bar in Explorer and file dialogs open faster both when idle and on a busy computer: Vestigo locks its working set against Windows trimming (up to a safe share of RAM), opts the whole process out of background throttling and raises its CPU and GPU priority ahead of background work, skips redundant repaints and duplicate shell/shortcut lookups on open, and catches new file dialogs sooner.

@@ -2,6 +2,12 @@
 
 What changed in each release of Vestigo. The newest version is on top.
 
+## [0.2.0] — 2026-11-24
+
+- The search window and the bar in Explorer and file dialogs open faster both when idle and on a busy computer: Vestigo locks its working set against Windows trimming (up to a safe share of RAM), opts the whole process out of background throttling and raises its CPU and GPU priority ahead of background work, skips redundant repaints and duplicate shell/shortcut lookups on open, and catches new file dialogs sooner.
+- The search window opens from the hotkey or double Ctrl right after it was closed by a click outside it; before, it ignored them for half a second.
+- Search lifts what you use in Windows, below what you open from Vestigo: files recently opened in any program, the folders you opened them from, and the programs you work in, wherever they were started. Folders you only pass through while browsing get nothing. Turn it off in *Settings → Index → System*.
+
 ## [0.1.2] — 2026-11-17
 
 - A maximized Open or Save dialog, or one with no room above or below it, now gets the search bar right under its bottom edge and the results over the dialog, instead of a bar pushed into the dialog with no results.
