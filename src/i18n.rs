@@ -629,6 +629,8 @@ pub(crate) struct Strings {
     pub(crate) add_folder: &'static str,
     pub(crate) hidden_low: &'static str,
     pub(crate) hidden_low_hint: &'static str,
+    pub(crate) windows_usage: &'static str,
+    pub(crate) windows_usage_hint: &'static str,
     pub(crate) rebuild_index: &'static str,
     pub(crate) rebuild_hint: &'static str,
     pub(crate) rebuild: &'static str,

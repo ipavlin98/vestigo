@@ -168,6 +168,7 @@ impl AppWindow {
 
     pub(crate) fn show(&mut self, page: Page, query: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
         self.revealing = platform::app_window_hidden() || platform::app_window_on_hold();
+        ui::freshen_recency(cx);
         self.open_page(page, window, cx);
         let select = self.revealing;
         self.search.update(cx, |search, cx| search.show(query, select, cx));

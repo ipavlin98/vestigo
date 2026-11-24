@@ -10,9 +10,13 @@ const ATTEMPTS: usize = 3;
 
 type Found = (u32, Meta, bool);
 
-pub(super) fn fill(volume: &RwLock<Volume>) -> bool {
+pub(super) fn fill(volume: &RwLock<Volume>, background: Option<fn()>) -> bool {
     let threads = std::thread::available_parallelism().map_or(1, |count| (count.get() / 2).max(1));
-    match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+    let mut builder = rayon::ThreadPoolBuilder::new().num_threads(threads);
+    if let Some(background) = background {
+        builder = builder.start_handler(move |_| background());
+    }
+    match builder.build() {
         Ok(pool) => pool.install(|| fill_in(volume)),
         Err(error) => {
             log::warn!("Reading sizes and dates without a thread pool: {error}");

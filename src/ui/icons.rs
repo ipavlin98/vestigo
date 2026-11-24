@@ -4,7 +4,7 @@ use crate::platform::{self, IconSource};
 use crate::settings;
 use disk::Saved;
 use futures::future::join_all;
-use gpui::{App, Global, RenderImage, prelude::*};
+use gpui::{App, Global, Priority, RenderImage, prelude::*};
 use image::imageops::{self, FilterType};
 use image::{Rgba, Rgba32FImage, RgbaImage};
 use rustc_hash::FxHashMap;
@@ -185,7 +185,8 @@ pub(crate) fn start(mut paths: Vec<(String, bool)>, pixels: u32, cx: &mut App) {
         });
         for batch in wanted.chunks(WARM_BATCH) {
             let batch = batch.to_vec();
-            let loaded = cx.background_spawn(async move { load_all(batch) }).await;
+            let loaded =
+                cx.background_executor().spawn_with_priority(Priority::Low, async move { load_all(batch) }).await;
             cx.update_global::<Icons, _>(|icons, cx| icons.store(loaded, cx));
         }
     })

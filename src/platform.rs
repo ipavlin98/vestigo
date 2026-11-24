@@ -1,4 +1,5 @@
 mod apps;
+mod assist;
 mod autostart;
 mod context_menu;
 mod drag;
@@ -7,6 +8,7 @@ mod hidden;
 mod icons;
 mod keys;
 mod mru;
+mod process;
 mod running;
 mod shell;
 mod tray;
@@ -16,6 +18,7 @@ mod window;
 mod worker;
 
 pub(crate) use apps::{is_store_app, store_app_name, store_apps};
+pub(crate) use assist::{assisted_launches, program_folders};
 pub(crate) use autostart::{adopt_legacy as adopt_legacy_autostart, enabled as autostart, set as set_autostart};
 pub(crate) use context_menu::{ShellItem, load_shell_menu, prepare_shell_menu, run_shell_item};
 pub(crate) use drag::{drag, drag_distance};
@@ -24,7 +27,8 @@ pub(crate) use hidden::{hidden_files_shown, show_hidden_files};
 pub(crate) use icons::{IconSource, app_shortcuts, cached_thumbnail, load as load_icon, thumbnail};
 pub(crate) use keys::layout_key;
 pub(crate) use mru::{Picked, dialog_picks};
-pub(crate) use running::{RunningApp, running_apps, switch_to};
+pub(crate) use process::{deprioritize_thread, keep_resident, prepare_process, prioritize_thread};
+pub(crate) use running::{RunningApp, running_apps, shortcut_targets, switch_to};
 pub(crate) use shell::{
     Picks, Purpose, Types, choose_in_dialog, current_folder, desktop_folder, dialog_purpose, downloads_folder,
     explorer_folders, focus_host, host_folder, landing_folders, navigate_explorer, open, properties, recent_items,
@@ -61,10 +65,6 @@ use windows::Win32::Globalization::GetUserDefaultUILanguage;
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
-use windows::Win32::System::Memory::{
-    QUOTA_LIMITS_HARDWS_MAX_DISABLE, QUOTA_LIMITS_HARDWS_MIN_DISABLE, SetProcessWorkingSetSizeEx,
-};
-use windows::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows::Win32::System::Threading::{
     CreateMutexW, GetCurrentProcess, OpenMutexW, OpenProcessToken, SYNCHRONIZATION_SYNCHRONIZE,
 };
@@ -88,6 +88,7 @@ const PREVIOUS_EXIT_WAIT: Duration = Duration::from_secs(30);
 const PREVIOUS_EXIT_POLL: Duration = Duration::from_millis(100);
 const FILETIME_TICK_NS: u128 = 100;
 const FILETIME_UNIX_EPOCH: u128 = 116_444_736_000_000_000;
+const NANOS_PER_SECOND: u128 = 1_000_000_000;
 const ZONE_STANDARD: u32 = 1;
 const ZONE_DAYLIGHT: u32 = 2;
 const SECONDS_PER_MINUTE: i64 = 60;
@@ -154,6 +155,7 @@ pub(crate) struct Watching {
     pub(crate) disabled: Vec<String>,
     pub(crate) double_click: bool,
     pub(crate) middle_click: bool,
+    pub(crate) usage: bool,
 }
 
 #[derive(Debug)]
@@ -161,6 +163,7 @@ pub(crate) enum Event {
     Search(SearchEvent),
     Hotkey(Hotkey, Option<Host>),
     FolderMenu(Clicked),
+    AppUsed(String),
     IndexChanged,
     IndexCounted,
     Rebuild,
@@ -294,20 +297,6 @@ pub(crate) fn is_elevated() -> bool {
     }
 }
 
-pub(crate) fn keep_resident() {
-    let mut counters = PROCESS_MEMORY_COUNTERS::default();
-    let size = size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
-    unsafe {
-        let process = GetCurrentProcess();
-        if !K32GetProcessMemoryInfo(process, &mut counters, size).as_bool() {
-            return;
-        }
-        let resident = counters.WorkingSetSize;
-        let soft = QUOTA_LIMITS_HARDWS_MIN_DISABLE | QUOTA_LIMITS_HARDWS_MAX_DISABLE;
-        let _ = SetProcessWorkingSetSizeEx(process, resident, resident.saturating_mul(2), soft);
-    }
-}
-
 pub(crate) fn relaunch_elevated(arguments: &str) -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
@@ -385,6 +374,11 @@ pub(crate) fn local_time(time: SystemTime) -> Option<Stamp> {
         hour: local.wHour as u8,
         minute: local.wMinute as u8,
     })
+}
+
+fn unix_seconds(filetime: u64) -> Option<u64> {
+    let since = u128::from(filetime).checked_sub(FILETIME_UNIX_EPOCH)? * FILETIME_TICK_NS / NANOS_PER_SECOND;
+    u64::try_from(since).ok()
 }
 
 pub(crate) fn clock() -> Clock {

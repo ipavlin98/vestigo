@@ -1,17 +1,18 @@
-use super::{FILETIME_TICK_NS, FILETIME_UNIX_EPOCH, ensure_com};
-use windows::Win32::Foundation::{ERROR_SUCCESS, FILETIME};
+use super::{ensure_com, unix_seconds};
+use windows::Win32::Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, FILETIME};
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_READ, RegCloseKey, RegOpenKeyExW, RegQueryInfoKeyW, RegQueryValueExW,
+    HKEY, HKEY_CURRENT_USER, KEY_READ, RegCloseKey, RegEnumValueW, RegOpenKeyExW, RegQueryInfoKeyW, RegQueryValueExW,
 };
 use windows::Win32::UI::Shell::Common::ITEMIDLIST;
 use windows::Win32::UI::Shell::{GPFIDL_DEFAULT, SHGetPathFromIDListEx};
-use windows::core::HSTRING;
+use windows::core::{HSTRING, PWSTR};
 
 const DIALOG_PICKS: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ComDlg32\\OpenSavePidlMRU";
 const ORDER: &str = "MRUListEx";
 const PICKS_PER_LIST: usize = 10;
 const PATH_LENGTH: usize = 1024;
-const NANOS_PER_SECOND: u128 = 1_000_000_000;
+const NAME_LENGTH: usize = 1024;
+const DATA_LENGTH: usize = 256;
 
 pub(crate) struct Picked {
     pub(crate) paths: Vec<String>,
@@ -33,10 +34,10 @@ pub(crate) fn dialog_picks(lists: &[String]) -> Vec<Picked> {
         .collect()
 }
 
-struct Key(HKEY);
+pub(super) struct Key(HKEY);
 
 impl Key {
-    fn open(path: &str) -> Option<Self> {
+    pub(super) fn open(path: &str) -> Option<Self> {
         let mut key = HKEY::default();
         let opened = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, &HSTRING::from(path), None, KEY_READ, &mut key) };
         (opened == ERROR_SUCCESS).then_some(Self(key))
@@ -60,9 +61,40 @@ impl Key {
         let read = unsafe {
             RegQueryInfoKeyW(self.0, None, None, None, None, None, None, None, None, None, None, Some(&mut time))
         };
-        let ticks = (u128::from(time.dwHighDateTime) << 32) | u128::from(time.dwLowDateTime);
-        let since = ticks.checked_sub(FILETIME_UNIX_EPOCH)? * FILETIME_TICK_NS / NANOS_PER_SECOND;
-        (read == ERROR_SUCCESS).then(|| u64::try_from(since).ok()).flatten()
+        let ticks = (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+        (read == ERROR_SUCCESS).then(|| unix_seconds(ticks)).flatten()
+    }
+
+    pub(super) fn values(&self) -> Vec<(String, Vec<u8>)> {
+        let mut values = Vec::new();
+        let mut name = [0u16; NAME_LENGTH];
+        let mut data = [0u8; DATA_LENGTH];
+        for index in 0u32.. {
+            let mut name_length = name.len() as u32;
+            let mut data_length = data.len() as u32;
+            let read = unsafe {
+                RegEnumValueW(
+                    self.0,
+                    index,
+                    Some(PWSTR(name.as_mut_ptr())),
+                    &mut name_length,
+                    None,
+                    None,
+                    Some(data.as_mut_ptr()),
+                    Some(&mut data_length),
+                )
+            };
+            if read == ERROR_NO_MORE_ITEMS {
+                break;
+            }
+            let (Some(name), Some(data)) = (name.get(..name_length as usize), data.get(..data_length as usize)) else {
+                continue;
+            };
+            if read == ERROR_SUCCESS {
+                values.push((String::from_utf16_lossy(name), data.to_vec()));
+            }
+        }
+        values
     }
 }
 

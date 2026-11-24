@@ -19,7 +19,7 @@ use futures::channel::mpsc;
 use gpui::{App, Application, TextRenderingMode};
 use index::{Index, Update};
 use platform::{Event, Remote};
-use settings::{History, Settings};
+use settings::{Activity, History, Settings};
 use std::{rc::Rc, sync::Arc};
 use theme::Catalog;
 
@@ -88,6 +88,12 @@ fn adopt_legacy(data: anyhow::Result<bool>, cache: anyhow::Result<bool>) {
 }
 
 fn run() {
+    platform::prepare_process();
+    platform::prioritize_thread();
+    let searchers = rayon::ThreadPoolBuilder::new().start_handler(|_| platform::prioritize_thread()).build_global();
+    if let Err(error) = searchers {
+        log::warn!("Couldn't set up the search threads: {error}");
+    }
     let (sender, receiver) = mpsc::unbounded();
     platform::connect(sender);
     let settings = Settings::load();
@@ -96,7 +102,11 @@ fn run() {
     let catalog = Catalog::load(settings::theme_files());
     let cache = settings::cache_dir();
     let extractor = Arc::new(platform::spawn_extractor);
-    let index = Arc::new(Index::with_cache(cache.join(INDEX_DIR)).extracting(cache.join(CONTENT_DIR), extractor));
+    let index = Arc::new(
+        Index::with_cache(cache.join(INDEX_DIR))
+            .with_background(platform::deprioritize_thread)
+            .extracting(cache.join(CONTENT_DIR), extractor),
+    );
     index.rank(app::ranking(&settings));
     index.rewalk_every(settings.index.rewalk.every());
     index.start(app::drives(&settings), settings.index.folders.clone(), |update| {
@@ -118,6 +128,7 @@ fn run() {
                 cx.set_global(settings);
                 cx.set_global(catalog);
                 cx.set_global(History::load());
+                cx.set_global(Activity::load());
                 cx.set_global(update::Updates::default());
 
                 app::start(shown, receiver, cx);

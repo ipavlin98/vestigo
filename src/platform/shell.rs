@@ -5,13 +5,15 @@ use anyhow::{Context, Result, bail};
 use parking_lot::Mutex;
 use std::cmp::Reverse;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::System::Com::{
     CLSCTX_ALL, CLSCTX_INPROC_SERVER, CoCreateInstance, CoTaskMemFree, IPersistFile, STGM_READ,
 };
 use windows::Win32::System::Variant::VARIANT;
+use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Documents, FOLDERID_Downloads, FOLDERID_Music, FOLDERID_Pictures, FOLDERID_Recent,
     FOLDERID_Screenshots, FOLDERID_Videos, Folder2, IShellFolderViewDual, IShellLinkW, IShellWindows, IWebBrowserApp,
@@ -29,12 +31,26 @@ const FILE_NAME_CONTROL: i32 = 1148;
 const FOLDER_NAME_CONTROL: i32 = 1152;
 const SAVE_NAME_CONTROL: i32 = 1001;
 const FILE_TYPE_CONTROL: i32 = 1136;
-const RECENT_LINKS: usize = 40;
+const RECENT_LINKS: usize = 150;
+const RECENT_TTL: Duration = Duration::from_secs(2);
 const PATH_LENGTH: usize = 1024;
 const MESSAGE_TIMEOUT_MS: u32 = 1000;
 const RESTORE_DELAY: Duration = Duration::from_millis(300);
 const CLASS_LENGTH: usize = 64;
-static RESOLVED: Mutex<Vec<Resolved>> = Mutex::new(Vec::new());
+static RESOLVED: Mutex<RecentCache> = Mutex::new(RecentCache::empty());
+static NAMED_CACHE: OnceLock<Vec<(String, String)>> = OnceLock::new();
+
+struct RecentCache {
+    updated: Option<Instant>,
+    entries: Vec<Resolved>,
+    visits: Vec<Visit>,
+}
+
+impl RecentCache {
+    const fn empty() -> Self {
+        Self { updated: None, entries: Vec::new(), visits: Vec::new() }
+    }
+}
 
 const NAMED_FOLDERS: [&GUID; 6] = [
     &FOLDERID_Desktop,
@@ -124,11 +140,11 @@ pub(crate) fn host_folder(host: Host) -> Option<String> {
         return known_folder(&FOLDERID_Desktop).and_then(|path| path.to_str().map(str::to_owned));
     }
     let crumbs = find_descendant(host.hwnd(), &mut |child| {
-        class_name(child) == "Breadcrumb Parent" && unsafe { IsWindowVisible(child) }.as_bool()
+        class_name_is(child, "Breadcrumb Parent") && unsafe { IsWindowVisible(child) }.as_bool()
     })?;
-    let bar = find_descendant(crumbs, &mut |child| class_name(child) == "ToolbarWindow32")?;
+    let bar = find_descendant(crumbs, &mut |child| class_name_is(child, "ToolbarWindow32"))?;
     let text = window_text(bar);
-    address_path(&text).map(str::to_owned).or_else(|| named_address(&text, &named_folders()))
+    address_path(&text).map(str::to_owned).or_else(|| named_address(&text, named_folders()))
 }
 
 fn address_path(text: &str) -> Option<&str> {
@@ -142,14 +158,16 @@ fn named_address(text: &str, folders: &[(String, String)]) -> Option<String> {
     Some(if rest.is_empty() { path.clone() } else { format!("{path}\\{rest}") })
 }
 
-fn named_folders() -> Vec<(String, String)> {
-    NAMED_FOLDERS
-        .iter()
-        .filter_map(|id| {
-            let path = known_folder(id)?.to_str()?.to_owned();
-            Some((display_name(&path)?, path))
-        })
-        .collect()
+fn named_folders() -> &'static [(String, String)] {
+    NAMED_CACHE.get_or_init(|| {
+        NAMED_FOLDERS
+            .iter()
+            .filter_map(|id| {
+                let path = known_folder(id)?.to_str()?.to_owned();
+                Some((display_name(&path)?, path))
+            })
+            .collect()
+    })
 }
 
 fn display_name(path: &str) -> Option<String> {
@@ -168,6 +186,10 @@ fn display_name(path: &str) -> Option<String> {
 
 pub(crate) fn recent_items() -> Vec<Visit> {
     ensure_com();
+    let mut cache = RESOLVED.lock();
+    if cache.updated.is_some_and(|at| at.elapsed() < RECENT_TTL) {
+        return cache.visits.clone();
+    }
     let Some(folder) = known_folder(&FOLDERID_Recent) else { return Vec::new() };
     let Ok(entries) = std::fs::read_dir(&folder) else { return Vec::new() };
     let mut links: Vec<(u64, PathBuf)> = entries
@@ -181,7 +203,7 @@ pub(crate) fn recent_items() -> Vec<Visit> {
         .collect();
     links.sort_by_key(|(at, _)| Reverse(*at));
     links.truncate(RECENT_LINKS);
-    let mut known = std::mem::take(&mut *RESOLVED.lock());
+    let mut known = std::mem::take(&mut cache.entries);
     let mut reader = None;
     let mut resolved = Vec::with_capacity(links.len());
     for (at, shortcut) in links {
@@ -191,14 +213,16 @@ pub(crate) fn recent_items() -> Vec<Visit> {
         };
         resolved.push(Resolved { shortcut, at, target });
     }
-    let visits = resolved
+    let visits: Vec<Visit> = resolved
         .iter()
         .filter_map(|known| {
             let (path, dir) = known.target.clone()?;
             Some(Visit { path, dir, at: known.at })
         })
         .collect();
-    *RESOLVED.lock() = resolved;
+    cache.entries = resolved;
+    cache.visits = visits.clone();
+    cache.updated = Some(Instant::now());
     visits
 }
 
@@ -244,6 +268,11 @@ impl LinkReader {
         let dir = std::fs::metadata(&path).ok()?.is_dir();
         Some((path, dir))
     }
+
+    pub(super) fn properties(&self, shortcut: &Path) -> Option<IPropertyStore> {
+        unsafe { self.file.Load(&HSTRING::from(shortcut.as_os_str()), STGM_READ) }.ok()?;
+        self.link.cast::<IPropertyStore>().ok()
+    }
 }
 
 pub(crate) fn desktop_folder() -> Option<String> {
@@ -268,7 +297,7 @@ pub(crate) fn current_folder(host: Option<Host>) -> Option<String> {
     host.and_then(host_folder).or_else(|| explorer_folders().into_iter().next()).or_else(desktop_folder)
 }
 
-fn known_folder(id: &GUID) -> Option<PathBuf> {
+pub(super) fn known_folder(id: &GUID) -> Option<PathBuf> {
     let path = unsafe { SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None) }.ok()?;
     let folder = unsafe { path.to_string() }.ok().map(PathBuf::from);
     unsafe { CoTaskMemFree(Some(path.0 as _)) };
@@ -341,6 +370,19 @@ pub(super) fn class_name(hwnd: HWND) -> String {
     let mut buffer = [0u16; CLASS_LENGTH];
     let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
     buffer.get(..usize::try_from(length).unwrap_or(0)).map(String::from_utf16_lossy).unwrap_or_default()
+}
+
+pub(super) fn class_name_is(hwnd: HWND, expected: &str) -> bool {
+    class_name_in(hwnd, &[expected])
+}
+
+pub(super) fn class_name_in(hwnd: HWND, expected: &[&str]) -> bool {
+    let mut buffer = [0u16; CLASS_LENGTH];
+    let length = usize::try_from(unsafe { GetClassNameW(hwnd, &mut buffer) }).unwrap_or(0);
+    let Some(units) = buffer.get(..length) else { return false };
+    expected
+        .iter()
+        .any(|name| units.len() == name.len() && units.iter().zip(name.bytes()).all(|(&u, b)| u == u16::from(b)))
 }
 
 pub(super) fn find_descendant(parent: HWND, predicate: &mut dyn FnMut(HWND) -> bool) -> Option<HWND> {
@@ -424,9 +466,9 @@ pub(crate) fn dialog_purpose(host: Host) -> Purpose {
 fn saved_types(dialog: HWND) -> Types {
     let mut types = Types::Any;
     find_descendant(dialog, &mut |child| {
-        let chooser = class_name(child) == "ComboBox"
-            && unsafe { GetParent(child) }.is_ok_and(|parent| class_name(parent) == "FloatNotifySink")
-            && find_descendant(child, &mut |inner| class_name(inner) == "Edit").is_none();
+        let chooser = class_name_is(child, "ComboBox")
+            && unsafe { GetParent(child) }.is_ok_and(|parent| class_name_is(parent, "FloatNotifySink"))
+            && find_descendant(child, &mut |inner| class_name_is(inner, "Edit")).is_none();
         if chooser {
             types = Types::parse(&window_text(child));
         }
@@ -437,10 +479,10 @@ fn saved_types(dialog: HWND) -> Types {
 
 pub(super) fn name_field(dialog: HWND) -> Option<(HWND, Picks)> {
     if let Some(field) = find_descendant(dialog, &mut |child| unsafe { GetDlgCtrlID(child) } == FILE_NAME_CONTROL) {
-        if class_name(field) == "Edit" {
+        if class_name_is(field, "Edit") {
             return Some((field, Picks::Files));
         }
-        return find_descendant(field, &mut |child| class_name(child) == "Edit").map(|edit| (edit, Picks::Files));
+        return find_descendant(field, &mut |child| class_name_is(child, "Edit")).map(|edit| (edit, Picks::Files));
     }
     if let Some(field) = find_descendant(dialog, &mut |child| is_save_name(child)) {
         return Some((field, Picks::Saves));
@@ -448,14 +490,14 @@ pub(super) fn name_field(dialog: HWND) -> Option<(HWND, Picks)> {
     let folder = find_descendant(dialog, &mut |child| unsafe {
         GetDlgCtrlID(child) == FOLDER_NAME_CONTROL && IsWindowVisible(child).as_bool()
     })?;
-    (class_name(folder) == "Edit").then_some((folder, Picks::Folders))
+    class_name_is(folder, "Edit").then_some((folder, Picks::Folders))
 }
 
 fn is_save_name(child: HWND) -> bool {
     let id = unsafe { GetDlgCtrlID(child) };
     id == SAVE_NAME_CONTROL
-        && class_name(child) == "Edit"
-        && unsafe { GetParent(child) }.is_ok_and(|parent| class_name(parent) == "ComboBox")
+        && class_name_is(child, "Edit")
+        && unsafe { GetParent(child) }.is_ok_and(|parent| class_name_is(parent, "ComboBox"))
 }
 
 fn chosen(path: &str, picks: Picks) -> &str {
@@ -467,6 +509,25 @@ fn chosen(path: &str, picks: Picks) -> &str {
 }
 
 fn window_text(hwnd: HWND) -> String {
+    let mut stack = [0u16; PATH_LENGTH];
+    let mut copied = 0usize;
+    let sent = unsafe {
+        SendMessageTimeoutW(
+            hwnd,
+            WM_GETTEXT,
+            WPARAM(stack.len()),
+            LPARAM(stack.as_mut_ptr() as isize),
+            SMTO_ABORTIFHUNG,
+            MESSAGE_TIMEOUT_MS,
+            Some(&mut copied),
+        )
+    };
+    if sent.0 == 0 {
+        return String::new();
+    }
+    if copied + 1 < stack.len() {
+        return stack.get(..copied).map(String::from_utf16_lossy).unwrap_or_default();
+    }
     let mut length = 0usize;
     unsafe {
         SendMessageTimeoutW(
@@ -480,7 +541,7 @@ fn window_text(hwnd: HWND) -> String {
         )
     };
     let mut buffer = vec![0u16; length + 1];
-    let mut copied = 0usize;
+    copied = 0;
     unsafe {
         SendMessageTimeoutW(
             hwnd,

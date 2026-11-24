@@ -9,6 +9,7 @@ pub(crate) use menu::{
     open_shell as open_shell_menu, recent_folders, shell_entries, shown_at as menu_shown_at, start as start_menus,
 };
 mod preview;
+mod recent;
 mod results;
 mod scroll;
 mod suggest;
@@ -21,6 +22,7 @@ mod widgets;
 pub(crate) use browse::{Browse, Browser, cancellable};
 pub(crate) use flow::{Look, Mark};
 pub(crate) use preview::{PREVIEW_WIDTH, Preview, Surface};
+pub(crate) use recent::{freshen_recency, recent_boosts, refresh_recency};
 pub(crate) use results::{Arrival, Entry, Extra, Listing, Motion, ResultList, Shown, Tool, action_hints, result_hints};
 pub(crate) use scroll::{edge_scroll, glide, glide_rows, scroll_to_child, scroll_to_span};
 pub(crate) use suggest::{DialogSources, Sources};

@@ -5,8 +5,8 @@ mod spot;
 mod tap;
 mod trail;
 
-use super::running::{process_id, process_path};
-use super::shell::{Picks, class_name, find_descendant, name_field};
+use super::running::{process_id, process_path, used_app};
+use super::shell::{Picks, class_name, class_name_in, class_name_is, find_descendant, name_field};
 use super::{Event, Host, HostKind, Hotkey, SearchEvent, Watching, read_motion, send, tray, window};
 use anyhow::{Context, Result};
 use chord::{Chord, Chords};
@@ -21,6 +21,7 @@ use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, 
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::{GetCurrentProcessId, THREAD_PRIORITY_HIGHEST};
 use windows::Win32::UI::Accessibility::HWINEVENTHOOK;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetKeyState, GetKeyboardLayout, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT,
@@ -50,7 +51,7 @@ const CLICK_MESSAGE: u32 = WM_APP + 9;
 const FOLLOW_MESSAGE: u32 = WM_APP + 10;
 const FIRST_HOTKEY: i32 = 1;
 const RECHECK_TIMER: usize = 1;
-const RECHECK_DELAY_MS: u32 = 100;
+const RECHECK_DELAY_MS: u32 = 20;
 const DIALOG_WAIT: Duration = Duration::from_secs(5);
 const CAPTURE_TIME: Duration = Duration::from_millis(700);
 const KEEP_KEYBOARD_STATE: u32 = 4;
@@ -160,6 +161,7 @@ fn request_follow() {
 }
 
 fn run() -> Result<()> {
+    super::process::prioritize(THREAD_PRIORITY_HIGHEST);
     let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
     let instance: HINSTANCE = unsafe { GetModuleHandleW(None) }.context("reading the module handle")?.into();
     let class =
@@ -278,6 +280,7 @@ struct State {
     capture: Option<Capture>,
     waiting: Option<Waiting>,
     followed: HostEvents,
+    used: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -359,8 +362,11 @@ impl State {
         self.blocked = !self.config.disabled.is_empty()
             && process_name(hwnd)
                 .is_some_and(|name| self.config.disabled.iter().any(|app| app.eq_ignore_ascii_case(&name)));
-        let host = classify(hwnd, &self.config).filter(|_| !self.blocked).map(|kind| Host::new(hwnd, kind));
-        self.wait_for_dialog(hwnd, host.is_none() && !self.blocked && class_name(hwnd) == "#32770");
+        let class = class_name(hwnd);
+        let classified = (!self.blocked).then(|| classify(hwnd, &class, &self.config)).flatten();
+        let host = classified.map(|(kind, _)| Host::new(hwnd, kind));
+        let unfinished = host.is_none() && !self.blocked && self.config.triggers.dialogs && class == "#32770";
+        self.wait_for_dialog(hwnd, unfinished);
         if host != self.host && self.host.is_some() {
             send(SearchEvent::Detach);
         }
@@ -368,19 +374,32 @@ impl State {
             request_follow();
         }
         self.host = host;
-        if let Some(host) = host.filter(|host| host.kind == HostKind::Dialog) {
-            let picks = name_field(hwnd).map_or(Picks::Files, |(_, picks)| picks);
+        if let Some((HostKind::Dialog, Some(picks))) = classified
+            && let Some(host) = host
+        {
             send(SearchEvent::Attach { host, explorer: self.trail.explorer_host(), picks });
         }
-        match class_name(hwnd).as_str() {
+        match class.as_str() {
             "CabinetWClass" | "ExploreWClass" => self.trail.explorer(Host::new(hwnd, HostKind::Explorer)),
             class if PASSING_CLASSES.contains(&class) => {}
             _ => {
                 let process = process_id(hwnd);
                 if process != process_id(unsafe { GetShellWindow() }) {
                     self.trail.app(process);
+                    self.note_use(hwnd, process);
                 }
             }
+        }
+    }
+
+    fn note_use(&mut self, hwnd: HWND, process: u32) {
+        if !self.config.usage || process == unsafe { GetCurrentProcessId() } {
+            return;
+        }
+        let Some(app) = used_app(hwnd) else { return };
+        if self.used.as_ref() != Some(&app) {
+            self.used = Some(app.clone());
+            send(Event::AppUsed(app));
         }
     }
 
@@ -402,8 +421,13 @@ impl State {
 
     fn recheck(&mut self) {
         match self.waiting {
-            Some(waiting) if Instant::now() < waiting.until => self.foreground(HWND(waiting.window as _)),
-            _ => self.stop_waiting(),
+            Some(waiting) if Instant::now() < waiting.until => {
+                let hwnd = HWND(waiting.window as _);
+                if dialog_picks(hwnd).is_some() {
+                    self.foreground(hwnd);
+                }
+            }
+            Some(_) | None => self.stop_waiting(),
         }
     }
 
@@ -523,18 +547,18 @@ fn modifiers(chord: Chord) -> HOT_KEY_MODIFIERS {
     modifiers
 }
 
-fn classify(hwnd: HWND, config: &Watching) -> Option<HostKind> {
+fn classify(hwnd: HWND, class: &str, config: &Watching) -> Option<(HostKind, Option<Picks>)> {
     let triggers = config.triggers;
-    match class_name(hwnd).as_str() {
-        "CabinetWClass" | "ExploreWClass" if triggers.explorer => Some(HostKind::Explorer),
-        "Progman" | "WorkerW" if triggers.desktop && has_file_list(hwnd) => Some(HostKind::Desktop),
-        "#32770" if triggers.dialogs && is_file_dialog(hwnd) => Some(HostKind::Dialog),
+    match class {
+        "CabinetWClass" | "ExploreWClass" if triggers.explorer => Some((HostKind::Explorer, None)),
+        "Progman" | "WorkerW" if triggers.desktop && has_file_list(hwnd) => Some((HostKind::Desktop, None)),
+        "#32770" if triggers.dialogs => dialog_picks(hwnd).map(|picks| (HostKind::Dialog, Some(picks))),
         _ => None,
     }
 }
 
 fn fullscreen(hwnd: HWND) -> bool {
-    if hwnd.is_invalid() || SHELL_CLASSES.contains(&class_name(hwnd).as_str()) {
+    if hwnd.is_invalid() || class_name_in(hwnd, &SHELL_CLASSES) {
         return false;
     }
     let mut rect = RECT::default();
@@ -555,13 +579,16 @@ fn process_name(hwnd: HWND) -> Option<String> {
 }
 
 fn has_file_list(hwnd: HWND) -> bool {
-    find_descendant(hwnd, &mut |child| class_name(child) == "SHELLDLL_DefView").is_some()
+    find_descendant(hwnd, &mut |child| class_name_is(child, "SHELLDLL_DefView")).is_some()
 }
 
-fn is_file_dialog(hwnd: HWND) -> bool {
-    unsafe { IsWindowVisible(hwnd) }.as_bool()
-        && name_field(hwnd).is_some()
-        && find_descendant(hwnd, &mut |child| DIALOG_VIEWS.contains(&class_name(child).as_str())).is_some()
+fn dialog_picks(hwnd: HWND) -> Option<Picks> {
+    if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+        return None;
+    }
+    let (_, picks) = name_field(hwnd)?;
+    find_descendant(hwnd, &mut |child| class_name_in(child, &DIALOG_VIEWS))?;
+    Some(picks)
 }
 
 fn file_list_focused(foreground: HWND) -> bool {
@@ -570,12 +597,12 @@ fn file_list_focused(foreground: HWND) -> bool {
     if unsafe { GetGUIThreadInfo(thread, &mut info) }.is_err() || info.hwndFocus.is_invalid() {
         return false;
     }
-    if !info.hwndCaret.is_invalid() || !FILE_LIST_CLASSES.contains(&class_name(info.hwndFocus).as_str()) {
+    if !info.hwndCaret.is_invalid() || !class_name_in(info.hwndFocus, &FILE_LIST_CLASSES) {
         return false;
     }
     let mut current = info.hwndFocus;
     for _ in 0..MAX_ANCESTORS {
-        if class_name(current) == "SHELLDLL_DefView" {
+        if class_name_is(current, "SHELLDLL_DefView") {
             return true;
         }
         match unsafe { GetParent(current) } {

@@ -2,7 +2,7 @@ use super::{Launcher, Mode, RECENT_LIMIT};
 use crate::index::Hit;
 use crate::platform::{Host, HostKind};
 use crate::ui::{DialogSources, Listing, Sources};
-use gpui::{AppContext, Context, Task};
+use gpui::{Context, Priority, Task};
 
 impl Launcher {
     pub(super) fn suggest(&mut self, cx: &mut Context<Self>) {
@@ -30,7 +30,10 @@ impl Launcher {
         let listing = suggestions.listing();
         let dialog = self.host().filter(|host| host.kind == HostKind::Dialog);
         self.filling = Some(cx.spawn(async move |this, cx| {
-            let hits = cx.background_spawn(async move { suggestions.collect() }).await;
+            let hits = cx
+                .background_executor()
+                .spawn_with_priority(Priority::High, async move { suggestions.collect() })
+                .await;
             let _ = this.update(cx, |this, cx| {
                 if let Some(session) = this.session.as_mut() {
                     session.offered = dialog.map(|host| (host, hits.clone()));
@@ -48,7 +51,8 @@ impl Launcher {
     pub(super) fn refresh_recent(&self, cx: &mut Context<Self>) -> Task<()> {
         let suggestions = Suggestions::Recent(Sources::of(cx));
         cx.spawn(async move |this, cx| {
-            let hits = cx.background_spawn(async move { suggestions.collect() }).await;
+            let hits =
+                cx.background_executor().spawn_with_priority(Priority::Low, async move { suggestions.collect() }).await;
             let _ = this.update(cx, |this, cx| this.recent_found(hits, cx));
         })
     }

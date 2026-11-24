@@ -491,6 +491,8 @@ pub(super) static RU: Strings = Strings {
     add_folder: "Добавить папку",
     hidden_low: "Скрытые и системные файлы в конце",
     hidden_low_hint: "Они по-прежнему находятся, но ниже остальных",
+    windows_usage: "Поднимать то, чем вы пользуетесь в Windows",
+    windows_usage_hint: "Недавние файлы, их папки и программы, в которых вы работаете, стоят выше, но ниже запусков из Vestigo",
     rebuild_index: "Перестроить индекс",
     rebuild_hint: "Заново читает все диски",
     rebuild: "Перестроить",

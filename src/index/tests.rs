@@ -688,7 +688,7 @@ fn system_drive_scan_and_search_speed() {
     let entries = volume.len();
     let volume = RwLock::new(volume);
     let started = Instant::now();
-    assert!(details::fill(&volume), "sizes and dates are read");
+    assert!(details::fill(&volume, None), "sizes and dates are read");
     let detailed = started.elapsed();
     let volume = volume.into_inner();
     let started = Instant::now();
@@ -829,7 +829,7 @@ fn search_in(volume: Volume, text: &str) -> Vec<String> {
 fn sizes_and_dates_are_read_from_disk_for_filters() {
     let (root, volume, _) = scratch_volume("details", &[("small-note.txt", 10), ("big-note.txt", 3 << 20)]);
     let volume = RwLock::new(volume);
-    assert!(details::fill(&volume));
+    assert!(details::fill(&volume, None));
     let volume = volume.into_inner();
     assert!(volume.details_complete());
     let _ = std::fs::remove_dir_all(&root);
@@ -847,7 +847,7 @@ fn unknown_details_never_pass_a_date_filter() {
 fn touched_files_are_read_again() {
     let (root, volume, folder) = scratch_volume("touched", &[("log.txt", 10)]);
     let volume = RwLock::new(volume);
-    assert!(details::fill(&volume));
+    assert!(details::fill(&volume, None));
     std::fs::write(root.join("log.txt"), vec![b'x'; 2 << 20]).expect("grown file");
     let file = volume.read().family().children(folder).first().copied().expect("the file is indexed");
     {

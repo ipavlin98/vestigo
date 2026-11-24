@@ -195,7 +195,7 @@ impl SearchPage {
         }
         self.results.start_search();
         let index = self.index.clone();
-        let boosts = cx.global::<History>().boosts();
+        let boosts = ui::recent_boosts(cx);
         let work = move |token: Token| async move {
             let (Results { hits, total, listed }, counts) =
                 index.search_until(&query, &boosts, &Focus::Programs, RESULT_LIMIT, &facets, &token)?;
