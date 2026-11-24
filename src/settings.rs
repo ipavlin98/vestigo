@@ -1,9 +1,11 @@
+mod activity;
 mod lists;
 mod options;
 mod shortcut;
 mod tools;
 mod usage;
 
+pub(crate) use activity::{Activity, Launch};
 pub(crate) use lists::{List, after_move, after_removal};
 pub(crate) use options::{
     Api, Favorite, Hotkeys, IndexOptions, Menu, MenuTool, Opener, Opening, Repeat, Rewalk, Suggestions,
@@ -250,8 +252,8 @@ impl Settings {
             indexed: (&index.skipped_drives, &index.folders) != (&was.skipped_drives, &was.folders),
             rewalk: index.rewalk != was.rewalk,
             full_text: index.full_text != was.full_text,
-            ranking: (&index.excluded, &index.high, &index.low, index.hidden_low)
-                != (&was.excluded, &was.high, &was.low, was.hidden_low),
+            ranking: (&index.excluded, &index.high, &index.low, index.hidden_low, index.windows_usage)
+                != (&was.excluded, &was.high, &was.low, was.hidden_low, was.windows_usage),
             filters: self.filters != before.filters,
             api: self.api != before.api,
             actions: self.actions != before.actions,
@@ -420,6 +422,10 @@ impl History {
 
     pub(crate) fn visits(&self) -> Vec<Visit> {
         self.visits.clone()
+    }
+
+    pub(crate) fn visited(&self) -> &[Visit] {
+        &self.visits
     }
 
     pub(crate) fn boosts(&self) -> Boosts {

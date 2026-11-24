@@ -393,13 +393,19 @@ pub(crate) fn place(anchor: Anchor, layout: Layout) {
         set_region(hwnd, region);
     } else {
         set_region(hwnd, region);
-        sync_backdrop(hwnd, region);
+        if visible {
+            sync_backdrop(hwnd, region);
+        }
     }
-    paint_now(hwnd);
+    if visible {
+        paint_now(hwnd);
+    }
     if !shrinks {
         with_shadow(|shadow| shadow.place(hwnd, panel, ratio, &look));
     }
-    card::follow();
+    if visible {
+        card::follow();
+    }
 }
 
 fn position(hwnd: HWND, anchor: Anchor, layout: &Layout) -> (RECT, f32) {
@@ -511,7 +517,11 @@ pub(crate) fn show(activate: bool, entrance: Entrance) -> bool {
         cloak(hwnd, false);
     }
     with_shadow(|shadow| shadow.show(hwnd));
-    !activate || bring_to_front(hwnd)
+    let front = !activate || bring_to_front(hwnd);
+    if hidden {
+        card::follow();
+    }
+    front
 }
 
 fn start_fade(hwnd: HWND) {

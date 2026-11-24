@@ -668,7 +668,7 @@ fn content_speed_on_the_real_drive() {
     let _ = flexi_logger::Logger::try_with_str("warn").map(|logger| logger.start());
     let journal = crate::index::ntfs::Journal::open('C').expect("administrator rights to open the journal");
     let volume = RwLock::new(journal.scan().expect("the MFT is readable"));
-    assert!(crate::index::details::fill(&volume), "sizes and dates are read");
+    assert!(crate::index::details::fill(&volume, None), "sizes and dates are read");
     let cache = Folder::new();
     let index = Arc::new(Index::default().extracting(cache.0.join("content"), in_process_extractor()));
     index.volumes.write().push(Arc::new(volume));

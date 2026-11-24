@@ -2,7 +2,7 @@ use super::Launcher;
 use crate::index::Boosts;
 use crate::platform::{self, RunningApp};
 use futures::FutureExt;
-use gpui::{AppContext, Context, Task};
+use gpui::{Context, Priority, Task};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ pub(super) type Running = Arc<FxHashMap<String, RunningApp>>;
 impl Launcher {
     pub(super) fn find_running(&mut self, cx: &mut Context<Self>) {
         let task = match self.host() {
-            None => cx.background_spawn(async {
+            None => cx.background_executor().spawn_with_priority(Priority::High, async {
                 let mut running = FxHashMap::default();
                 for (path, app) in platform::running_apps() {
                     running.entry(path).or_insert(app);

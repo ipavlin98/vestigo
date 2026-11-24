@@ -1,11 +1,11 @@
 use super::apps::APPS_FOLDER;
 use super::icons::app_shortcuts;
-use super::shell::{LinkReader, class_name, top_level_windows};
+use super::shell::{LinkReader, class_name_in, class_name_is, top_level_windows};
 use super::{ensure_com, window};
 use anyhow::{Result, bail};
 use parking_lot::Mutex;
 use std::path::Path;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, PROPERTYKEY};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::Storage::Packaging::Appx::GetApplicationUserModelId;
@@ -16,22 +16,36 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Shell::PropertiesSystem::{IPropertyStore, SHGetPropertyStoreForWindow};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-    IsWindow, IsWindowVisible, SW_RESTORE, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    FindWindowExW, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowThreadProcessId,
+    IsIconic, IsWindow, IsWindowVisible, SW_RESTORE, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
-use windows::core::{GUID, PWSTR};
+use windows::core::{GUID, PWSTR, w};
 
 const PATH_LENGTH: usize = 1024;
 const APP_ID_LENGTH: usize = 256;
+const SHORTCUT_TTL: Duration = Duration::from_secs(60);
 const DESKTOP_CLASSES: [&str; 2] = ["Progman", "WorkerW"];
+const FRAME_CLASS: &str = "ApplicationFrameWindow";
 const APP_ID: PROPERTYKEY = PROPERTYKEY { fmtid: GUID::from_u128(0x9f4c2855_9f79_4b39_a8d0_e1d42de1d5f3), pid: 5 };
 
-static TARGETS: Mutex<Vec<Target>> = Mutex::new(Vec::new());
+static TARGETS: Mutex<ShortcutCache> = Mutex::new(ShortcutCache::empty());
+
+struct ShortcutCache {
+    updated: Option<Instant>,
+    entries: Vec<Target>,
+    pairs: Vec<(String, String)>,
+}
+
+impl ShortcutCache {
+    const fn empty() -> Self {
+        Self { updated: None, entries: Vec::new(), pairs: Vec::new() }
+    }
+}
 
 struct Target {
     shortcut: String,
     modified: Option<SystemTime>,
-    target: Option<String>,
+    starts: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,10 +68,11 @@ pub(crate) fn running_apps() -> Vec<(String, RunningApp)> {
             continue;
         }
         let instance = RunningApp { window };
-        if let Some(path) = process_path(hwnd) {
+        let (path, app_id) = process_identity(hwnd);
+        if let Some(path) = path {
             running.push((path.to_lowercase(), instance));
         }
-        if let Some(id) = window_app_id(hwnd).or_else(|| process_app_id(hwnd)) {
+        if let Some(id) = app_id.or_else(|| window_app_id(hwnd)) {
             running.push((format!("{APPS_FOLDER}{id}").to_lowercase(), instance));
         }
     }
@@ -84,6 +99,25 @@ pub(crate) fn switch_to(instance: RunningApp) -> Result<()> {
     Ok(())
 }
 
+/// The program a window belongs to: a packaged app by its app ID (a Store app's frame through the
+/// app's own window inside it), anything else by its program file.
+pub(super) fn used_app(hwnd: HWND) -> Option<String> {
+    let framed = class_name_is(hwnd, FRAME_CLASS);
+    let window = if framed { framed_window(hwnd)? } else { hwnd };
+    let (path, app_id) = process_identity(window);
+    match app_id {
+        Some(id) => Some(format!("{APPS_FOLDER}{id}")),
+        None if framed => None,
+        None => path,
+    }
+}
+
+fn framed_window(frame: HWND) -> Option<HWND> {
+    unsafe { FindWindowExW(Some(frame), None, w!("Windows.UI.Core.CoreWindow"), None) }
+        .ok()
+        .filter(|window| !window.is_invalid())
+}
+
 pub(super) fn process_id(hwnd: HWND) -> u32 {
     let mut process = 0;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process)) };
@@ -91,13 +125,28 @@ pub(super) fn process_id(hwnd: HWND) -> u32 {
 }
 
 pub(super) fn process_path(hwnd: HWND) -> Option<String> {
-    with_process(hwnd, |handle| {
-        let mut buffer = [0u16; PATH_LENGTH];
-        let mut length = buffer.len() as u32;
-        unsafe { QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(buffer.as_mut_ptr()), &mut length) }
-            .ok()?;
-        Some(String::from_utf16_lossy(buffer.get(..length as usize)?))
-    })
+    with_process(hwnd, query_process_path)
+}
+
+fn process_identity(hwnd: HWND) -> (Option<String>, Option<String>) {
+    with_process(hwnd, |handle| Some((query_process_path(handle), query_process_app_id(handle))))
+        .unwrap_or((None, None))
+}
+
+fn query_process_path(handle: HANDLE) -> Option<String> {
+    let mut buffer = [0u16; PATH_LENGTH];
+    let mut length = buffer.len() as u32;
+    unsafe { QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(buffer.as_mut_ptr()), &mut length) }.ok()?;
+    Some(String::from_utf16_lossy(buffer.get(..length as usize)?))
+}
+
+fn query_process_app_id(handle: HANDLE) -> Option<String> {
+    let mut buffer = [0u16; APP_ID_LENGTH];
+    let mut length = buffer.len() as u32;
+    unsafe { GetApplicationUserModelId(handle, &mut length, Some(PWSTR(buffer.as_mut_ptr()))) }.ok().ok()?;
+    let text = buffer.get(..length as usize)?;
+    let end = text.iter().position(|&unit| unit == 0).unwrap_or(text.len());
+    Some(String::from_utf16_lossy(text.get(..end)?)).filter(|id| !id.is_empty())
 }
 
 fn with_process<T>(hwnd: HWND, read: impl FnOnce(HANDLE) -> Option<T>) -> Option<T> {
@@ -118,7 +167,7 @@ fn switchable(hwnd: HWND) -> bool {
         && unsafe { GetWindowTextLengthW(hwnd) } > 0
         && !cloaked(hwnd)
         && !window::is_ours(hwnd)
-        && !DESKTOP_CLASSES.contains(&class_name(hwnd).as_str())
+        && !class_name_in(hwnd, &DESKTOP_CLASSES)
 }
 
 fn cloaked(hwnd: HWND) -> bool {
@@ -131,44 +180,48 @@ fn cloaked(hwnd: HWND) -> bool {
 
 fn window_app_id(hwnd: HWND) -> Option<String> {
     let store: IPropertyStore = unsafe { SHGetPropertyStoreForWindow(hwnd) }.ok()?;
+    stored_app_id(&store).filter(|id| id.contains(super::apps::PACKAGED))
+}
+
+fn stored_app_id(store: &IPropertyStore) -> Option<String> {
     let value = unsafe { store.GetValue(&APP_ID) }.ok()?;
     let text = unsafe { PropVariantToStringAlloc(&value) }.ok()?;
     let id = unsafe { text.to_string() }.ok();
     unsafe { CoTaskMemFree(Some(text.0 as _)) };
-    id.filter(|id| id.contains(super::apps::PACKAGED))
+    id.filter(|id| !id.is_empty())
 }
 
-fn process_app_id(hwnd: HWND) -> Option<String> {
-    with_process(hwnd, |handle| {
-        let mut buffer = [0u16; APP_ID_LENGTH];
-        let mut length = buffer.len() as u32;
-        unsafe { GetApplicationUserModelId(handle, &mut length, Some(PWSTR(buffer.as_mut_ptr()))) }.ok().ok()?;
-        let text = buffer.get(..length as usize)?;
-        let end = text.iter().position(|&unit| unit == 0).unwrap_or(text.len());
-        Some(String::from_utf16_lossy(text.get(..end)?)).filter(|id| !id.is_empty())
-    })
-}
-
-fn shortcut_targets() -> Vec<(String, String)> {
-    let mut known = std::mem::take(&mut *TARGETS.lock());
+pub(crate) fn shortcut_targets() -> Vec<(String, String)> {
+    ensure_com();
+    let mut cache = TARGETS.lock();
+    if cache.updated.is_some_and(|at| at.elapsed() < SHORTCUT_TTL) {
+        return cache.pairs.clone();
+    }
+    let mut known = std::mem::take(&mut cache.entries);
     let mut reader = None;
     let targets: Vec<Target> = app_shortcuts()
         .into_iter()
         .map(|shortcut| {
             let modified = std::fs::metadata(&shortcut).and_then(|metadata| metadata.modified()).ok();
-            let target = match known.iter().position(|known| known.shortcut == shortcut && known.modified == modified) {
-                Some(position) => known.swap_remove(position).target,
-                None => reader
-                    .get_or_insert_with(LinkReader::new)
-                    .as_ref()
-                    .and_then(|reader| reader.target(Path::new(&shortcut)))
-                    .map(|(path, _)| path.to_lowercase()),
+            let starts = match known.iter().position(|known| known.shortcut == shortcut && known.modified == modified) {
+                Some(position) => known.swap_remove(position).starts,
+                None => reader.get_or_insert_with(LinkReader::new).as_ref().map_or_else(Vec::new, |reader| {
+                    let path = Path::new(&shortcut);
+                    let target = reader.target(path).map(|(target, _)| target);
+                    let app = reader.properties(path).and_then(|store| stored_app_id(&store));
+                    let app = app.map(|id| format!("{APPS_FOLDER}{id}"));
+                    target.into_iter().chain(app).map(|start| start.to_lowercase()).collect()
+                }),
             };
-            Target { shortcut, modified, target }
+            Target { shortcut, modified, starts }
         })
         .collect();
-    let pairs =
-        targets.iter().filter_map(|known| Some((known.shortcut.to_lowercase(), known.target.clone()?))).collect();
-    *TARGETS.lock() = targets;
+    let pairs: Vec<(String, String)> = targets
+        .iter()
+        .flat_map(|known| known.starts.iter().map(|start| (known.shortcut.to_lowercase(), start.clone())))
+        .collect();
+    cache.entries = targets;
+    cache.pairs = pairs.clone();
+    cache.updated = Some(Instant::now());
     pairs
 }

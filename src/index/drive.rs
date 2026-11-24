@@ -35,7 +35,8 @@ impl Index {
         let index = self.clone();
         let letter = volume.read().letter();
         let spawned = std::thread::Builder::new().name(format!("details-{letter}")).spawn(move || {
-            if details::fill(&volume) && index.current(job) {
+            index.enter_background();
+            if details::fill(&volume, index.background) && index.current(job) {
                 index.save_shared(&volume);
                 changed(Update::Contents);
             }
@@ -86,6 +87,7 @@ impl Index {
         changed: &Changed,
         job: Job,
     ) {
+        self.enter_background();
         let letter = volume.read().letter();
         let mut rescanned: Option<Instant> = None;
         loop {

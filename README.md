@@ -142,6 +142,8 @@ everything one can contain.
 
 ### A few more things
 
+- What you open from Vestigo comes first next time. Right below it rank the files you recently opened anywhere
+  in Windows, the folders you opened them from, and the programs you work in.
 - Start typing in an Explorer window or on the desktop, and the bar opens with that folder's files on top.
 - In Open and Save dialogs the bar sits right under the dialog. `Enter` takes the dialog to the folder you picked,
   `Ctrl+G` to the folder of the last Explorer window.

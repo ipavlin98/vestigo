@@ -8,7 +8,7 @@ use crate::i18n::{Language, LanguageChoice, Strings};
 use crate::index::{Focus, Status};
 use crate::platform::{self, Event};
 use crate::search::Query;
-use crate::settings::{self, History, Settings, Triggers, Zoom};
+use crate::settings::{self, Activity, History, Settings, Triggers, Zoom};
 use crate::theme::rem;
 use crate::theme::{Appearance, Catalog, Entry, Origin, Theme, ThemeChoice};
 use crate::ui::{self, Choice, Command, button, toggle};
@@ -45,7 +45,7 @@ impl SettingsPage {
             cx,
         );
         let settings = cx.global::<Settings>();
-        let history_empty = cx.global::<History>().is_empty();
+        let history_empty = cx.global::<History>().is_empty() && cx.global::<Activity>().is_empty();
         let autostart = cx.global::<Machine>().autostart;
         let autostart_toggle = toggle("autostart", autostart == Some(true), theme).on_click(move |_, _, cx| {
             if let Some(on) = autostart {
@@ -55,7 +55,8 @@ impl SettingsPage {
         let tray = toggle("tray", settings.tray, theme)
             .on_click(|_, _, cx| change(cx, |settings| settings.tray = !settings.tray));
         let clear = button("history", strings.clear, !history_empty, theme, |_, _, cx| {
-            cx.update_global::<History, _>(|history, _| history.clear())
+            cx.update_global::<History, _>(|history, _| history.clear());
+            cx.update_global::<Activity, _>(|activity, _| activity.clear());
         });
         let reset = button("position", strings.reset, settings.position.is_some(), theme, |_, _, cx| {
             change(cx, |settings| settings.position = None)

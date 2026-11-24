@@ -150,8 +150,12 @@ impl Launcher {
         true
     }
     pub(super) fn clear_query(&mut self, cx: &mut Context<Self>) {
+        self.set_query("", cx);
+    }
+
+    pub(super) fn set_query(&mut self, text: &str, cx: &mut Context<Self>) {
         self.leave_menu(cx);
-        self.input.update(cx, |input, cx| input.set_text("", cx));
+        self.input.update(cx, |input, cx| input.set_text(text, cx));
     }
 
     pub(super) fn run_action(&mut self, action: &RunAction, _: &mut Window, cx: &mut Context<Self>) {

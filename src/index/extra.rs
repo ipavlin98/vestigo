@@ -63,7 +63,7 @@ impl Index {
             let Some(volume) = added else { return };
             let walked = Instant::now();
             if !volume.read().details_complete() {
-                details::fill(&volume);
+                details::fill(&volume, self.background);
                 changed(Update::Contents);
             }
             self.content.touch();

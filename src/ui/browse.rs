@@ -3,7 +3,7 @@ use super::trail::{Entered, Entering, Trail, go_to_mark, set_mark};
 use super::{EnterContaining, EnterFolder, GoToMark, Jump, LeaveFolder, SetMark};
 use crate::index::{Cancel, Token};
 use crate::input::TextInput;
-use gpui::{AppContext, Context, Entity, Task, Window};
+use gpui::{AppContext, Context, Entity, Priority, Task, Window};
 use std::future::Future;
 
 pub(crate) struct Browse<'a> {
@@ -88,7 +88,7 @@ where
     let cancel = Cancel::new();
     let work = work(cancel.token());
     cx.spawn(async move |this, cx| {
-        let found = cx.background_spawn(work).await;
+        let found = cx.background_executor().spawn_with_priority(Priority::High, work).await;
         drop(cancel);
         let Some(found) = found else { return };
         let _ = this.update(cx, |this, cx| done(this, found, cx));

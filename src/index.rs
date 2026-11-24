@@ -235,11 +235,23 @@ pub(crate) struct Index {
     watched: parking_lot::Mutex<Vec<Watched>>,
     rewalk: parking_lot::Mutex<Option<Duration>>,
     content: Content,
+    background: Option<fn()>,
 }
 
 impl Index {
     pub(crate) fn with_cache(cache: PathBuf) -> Self {
         Self { cache: Some(cache), ..Self::default() }
+    }
+
+    pub(crate) fn with_background(mut self, background: fn()) -> Self {
+        self.background = Some(background);
+        self
+    }
+
+    fn enter_background(&self) {
+        if let Some(background) = self.background {
+            background();
+        }
     }
 
     pub(crate) fn save(&self) {
@@ -313,9 +325,10 @@ impl Index {
             let index = self.clone();
             let changed = changed.clone();
             let path = folder.clone();
-            let spawned = std::thread::Builder::new()
-                .name("index-folder".into())
-                .spawn(move || index.index_folder(&path, &woken, &changed, Job { generation, fresh }));
+            let spawned = std::thread::Builder::new().name("index-folder".into()).spawn(move || {
+                index.enter_background();
+                index.index_folder(&path, &woken, &changed, Job { generation, fresh });
+            });
             if let Err(error) = spawned {
                 log::error!("Couldn't start indexing a folder: {error}");
                 self.watched.lock().retain(|watched| watched.status.path != folder);

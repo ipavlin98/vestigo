@@ -201,9 +201,13 @@ fn document(lower_name: &str) -> bool {
     Format::of(lower_name).is_some()
 }
 
-fn half_pool() -> Option<ThreadPool> {
+fn half_pool(background: Option<fn()>) -> Option<ThreadPool> {
     let threads = std::thread::available_parallelism().map_or(1, |count| (count.get() / 2).max(1));
-    match rayon::ThreadPoolBuilder::new().num_threads(threads).thread_name(|_| "content".into()).build() {
+    let mut builder = rayon::ThreadPoolBuilder::new().num_threads(threads).thread_name(|_| "content".into());
+    if let Some(background) = background {
+        builder = builder.start_handler(move |_| background());
+    }
+    match builder.build() {
         Ok(pool) => Some(pool),
         Err(error) => {
             log::warn!("Couldn't start the content index threads: {error}");
@@ -378,6 +382,7 @@ impl Index {
         let previous = self.content.thread.lock().take();
         let index = self.clone();
         let spawned = std::thread::Builder::new().name("content".into()).spawn(move || {
+            index.enter_background();
             if let Some(previous) = previous {
                 let _ = previous.join();
             }
@@ -494,7 +499,7 @@ impl Index {
             self.notify(Update::Count);
         }
         if !jobs.is_empty() {
-            let pool = half_pool();
+            let pool = half_pool(self.background);
             self.feed(jobs, run, spawn, pool.as_ref())?;
             in_pool(pool.as_ref(), || library::settle(library, true))?;
             if self.content.alive(run) {
@@ -522,7 +527,7 @@ impl Index {
     }
 
     fn open_library(&self, run: u64, folder: &Path) -> bool {
-        let pool = half_pool();
+        let pool = half_pool(self.background);
         let alive = || self.content.alive(run);
         let opened = in_pool(pool.as_ref(), || Library::open_or_create(folder, &alive));
         match opened {
@@ -546,7 +551,7 @@ impl Index {
             self.notify(Update::Contents);
             self.watch_content(run, spawn);
             let library = &self.content.library;
-            let pool = half_pool();
+            let pool = half_pool(self.background);
             if let Err(error) = in_pool(pool.as_ref(), || library::save(library)) {
                 log::warn!("Couldn't save the content cache: {error:#}");
             }

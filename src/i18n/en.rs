@@ -491,6 +491,8 @@ pub(super) static EN: Strings = Strings {
     add_folder: "Add a folder",
     hidden_low: "Hidden and system files last",
     hidden_low_hint: "They are still found, below everything else",
+    windows_usage: "Lift what you use in Windows",
+    windows_usage_hint: "Recent files, their folders and the programs you work in rank higher, below launches from Vestigo",
     rebuild_index: "Rebuild the index",
     rebuild_hint: "Reads every drive again from scratch",
     rebuild: "Rebuild",

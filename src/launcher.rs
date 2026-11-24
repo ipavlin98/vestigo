@@ -26,7 +26,7 @@ use crate::ui::{
 use futures::FutureExt;
 use futures::future::Shared;
 use gpui::{
-    App, AppContext, BorrowAppContext, ClickEvent, Context, Entity, EventEmitter, Focusable, Pixels, Point,
+    App, AppContext, BorrowAppContext, ClickEvent, Context, Entity, EventEmitter, Focusable, Pixels, Point, Priority,
     Subscription, Task, Window, actions,
 };
 use std::sync::Arc;
@@ -177,7 +177,7 @@ impl Launcher {
         launcher.list_apps(cx);
         launcher.find_running(cx);
         launcher.filling = Some(launcher.refresh_recent(cx));
-        cx.background_spawn(async { platform::recent_items() }).detach();
+        cx.background_executor().spawn_with_priority(Priority::Low, async { platform::recent_items() }).detach();
         launcher.apply_placeholder(cx);
         launcher.restyle(window, cx);
         launcher
@@ -198,8 +198,7 @@ impl Launcher {
                     Repeat::Close => self.close(cx),
                 }
             }
-            SearchEvent::Toggle | SearchEvent::Summon
-                if self.dismissed.is_some_and(|at| at.elapsed() < TOGGLE_GRACE) => {}
+            SearchEvent::Toggle if self.dismissed.is_some_and(|at| at.elapsed() < TOGGLE_GRACE) => {}
             SearchEvent::Toggle | SearchEvent::Summon => {
                 let opening = cx.global::<Settings>().opening;
                 if opening == Opening::Empty {
@@ -216,8 +215,8 @@ impl Launcher {
                 if !first && self.host() == Some(host) {
                     self.input.update(cx, |input, cx| input.append(&text, cx));
                 } else {
+                    self.set_query(&text, cx);
                     self.open(Mode::docked(host, cx), Appear::Focused, window, cx);
-                    self.input.update(cx, |input, cx| input.set_text(&text, cx));
                 }
             }
             SearchEvent::Attach { host, .. } if self.host() == Some(host) => {
@@ -285,10 +284,10 @@ impl Launcher {
             cx.spawn(async move |_, _| platform::hide()).detach();
         }
         self.restore_menu(cx);
+        ui::freshen_recency(cx);
         self.find_focus(cx);
         let under = cx.global::<Theme>().launcher.background;
         self.input.update(cx, |input, cx| input.set_under(under, cx));
-        ui::publish_status(&self.index, cx);
         self.apply_placeholder(cx);
         if appear.activates() {
             window.focus(&self.input.focus_handle(cx), cx);
@@ -300,9 +299,9 @@ impl Launcher {
     fn find_focus(&mut self, cx: &mut Context<Self>) {
         let task = match self.host() {
             None => Task::ready(Focus::Programs),
-            Some(host) => {
-                cx.background_spawn(async move { platform::host_folder(host).map_or(Focus::Anything, Focus::Folder) })
-            }
+            Some(host) => cx.background_executor().spawn_with_priority(Priority::High, async move {
+                platform::host_folder(host).map_or(Focus::Anything, Focus::Folder)
+            }),
         };
         self.focus = task.shared();
         self.find_running(cx);
@@ -314,7 +313,9 @@ impl Launcher {
         }
         self.apps_listed = Some(Instant::now());
         let index = self.index.clone();
-        cx.background_spawn(async move { index.list_apps(platform::store_apps()) }).detach();
+        cx.background_executor()
+            .spawn_with_priority(Priority::Low, async move { index.list_apps(platform::store_apps()) })
+            .detach();
     }
 
     pub(crate) fn close(&mut self, cx: &mut Context<Self>) {
@@ -323,7 +324,14 @@ impl Launcher {
             self.filling = Some(self.refresh_recent(cx));
             self.restore_menu(cx);
             self.input.update(cx, |input, cx| input.set_blinking(false, cx));
-            cx.spawn(async move |_, _| platform::hide()).detach();
+            let scanning = cx.global::<Status>().scanning;
+            cx.spawn(async move |_, _| {
+                platform::hide();
+                if !scanning {
+                    platform::keep_resident();
+                }
+            })
+            .detach();
         }
     }
 
@@ -405,6 +413,9 @@ impl Launcher {
     }
 
     fn input_changed(&mut self, cx: &mut Context<Self>) {
+        if self.session.is_none() {
+            return;
+        }
         if self.menu.is_some() || self.input.read(cx).text() != self.searched {
             self.query_changed(cx);
         }
@@ -434,7 +445,7 @@ impl Launcher {
         self.results.start_search();
         let kept = again && self.reveal_kept(&before, &after, cx);
         let index = self.index.clone();
-        let boosts = cx.global::<History>().boosts();
+        let boosts = ui::recent_boosts(cx);
         let focus = self.focus.clone();
         let running = self.running.clone();
         let work = move |token: Token| async move {

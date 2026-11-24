@@ -12,23 +12,24 @@ use crate::input;
 use crate::launcher::{self, Card, Expand, Launcher};
 use crate::platform::{self, Binding, Event, Host, HostKind, Hotkey, SearchEvent, Watching};
 use crate::search::Filter;
-use crate::settings::{ActionSpec, History, Scope, Settings, Shortcut};
+use crate::settings::{ActionSpec, Activity, History, Scope, Settings, Shortcut};
 use crate::theme::{Appearance, Catalog, Theme};
 use crate::ui;
 use crate::ui::Subject;
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
 use gpui::{
-    App, AppContext, Context, Entity, Global, Subscription, Task, WindowBackgroundAppearance, WindowHandle,
-    WindowOptions,
+    App, AppContext, BorrowAppContext, Context, Entity, Global, Subscription, Task, WindowBackgroundAppearance,
+    WindowHandle, WindowOptions,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const COUNT_DELAY: Duration = Duration::from_millis(500);
 const REFRESH_INTERVAL: Duration = Duration::from_millis(250);
 const SAVE_DELAY: Duration = Duration::from_secs(1);
+const ACTIVITY_SAVE_DELAY: Duration = Duration::from_secs(5 * 60);
 const PLACEMENT_DELAY: Duration = Duration::from_millis(16);
 
 struct Running {
@@ -39,6 +40,7 @@ impl Global for Running {}
 
 pub(crate) fn start(index: Arc<Index>, events: UnboundedReceiver<Event>, cx: &mut App) {
     ui::publish_status(&index, cx);
+    ui::refresh_recency(cx);
     app_window::probe(cx);
     apply_theme(cx);
     apply_language(cx);
@@ -99,6 +101,7 @@ struct Shell {
     refreshed: Option<Instant>,
     settings_save: Option<Task<()>>,
     history_save: Option<Task<()>>,
+    activity_save: Option<Task<()>>,
     updater: Updater,
     _subscriptions: Vec<Subscription>,
     _events: Task<()>,
@@ -114,10 +117,14 @@ impl Shell {
     ) -> Self {
         let mut subscriptions = vec![
             cx.observe_global::<Settings>(|this, cx| this.settings_changed(cx)),
-            cx.observe_global::<History>(|this, cx| this.history_save = Some(later(cx, Self::save_history))),
+            cx.observe_global::<History>(|this, cx| {
+                this.history_save = Some(later(cx, SAVE_DELAY, Self::save_history));
+            }),
+            cx.observe_global::<Activity>(|this, cx| this.activity_changed(cx)),
             cx.on_app_quit(|this, cx| {
                 this.save_settings(cx);
                 this.save_history(cx);
+                this.save_activity(cx);
                 this.index.close_content();
                 this.index.save();
                 std::future::ready(())
@@ -164,6 +171,7 @@ impl Shell {
             refreshed: None,
             settings_save: None,
             history_save: None,
+            activity_save: None,
             updater: Updater::default(),
             _subscriptions: subscriptions,
             _events: events,
@@ -183,6 +191,10 @@ impl Shell {
             }
             Event::Hotkey(hotkey, host) => self.hotkey(hotkey, host, cx),
             Event::FolderMenu(clicked) => menu::open(Some(clicked.host), clicked.folder, clicked.hidden_shown, cx),
+            Event::AppUsed(app) => {
+                let at = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
+                cx.update_global::<Activity, _>(|activity, _| activity.record(&app, at));
+            }
             Event::IndexChanged => self.index_changed(cx),
             Event::IndexCounted => self.index_counted(cx),
             Event::Rebuild => self.index.rebuild(),
@@ -271,8 +283,10 @@ impl Shell {
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
         self.refreshed = Some(Instant::now());
-        platform::keep_resident();
         ui::publish_status(&self.index, cx);
+        if !cx.global::<crate::index::Status>().scanning {
+            platform::keep_resident();
+        }
         self.refresh_launcher(cx);
         if let Some(handle) = self.app_window {
             let _ = handle.update(cx, |app_window, _, cx| app_window.index_changed(cx));
@@ -381,6 +395,20 @@ impl Shell {
         }
     }
 
+    fn activity_changed(&mut self, cx: &mut Context<Self>) {
+        if cx.global::<Activity>().is_empty() {
+            self.activity_save = Some(later(cx, SAVE_DELAY, Self::save_activity));
+        } else if self.activity_save.is_none() {
+            self.activity_save = Some(later(cx, ACTIVITY_SAVE_DELAY, Self::save_activity));
+        }
+    }
+
+    fn save_activity(&mut self, cx: &mut Context<Self>) {
+        if self.activity_save.take().is_some() {
+            cx.global::<Activity>().save();
+        }
+    }
+
     fn settings_changed(&mut self, cx: &mut Context<Self>) {
         if *cx.global::<Settings>() == self.saved {
             return;
@@ -388,7 +416,7 @@ impl Shell {
         let settings = cx.global::<Settings>().clone();
         let changes = settings.changes(&self.saved);
         let previous = std::mem::replace(&mut self.saved, settings.clone());
-        self.settings_save = Some(later(cx, Self::save_settings));
+        self.settings_save = Some(later(cx, SAVE_DELAY, Self::save_settings));
         if watching(&settings) != watching(&previous) {
             platform::configure(watching(&settings));
         }
@@ -409,6 +437,7 @@ impl Shell {
         }
         if changes.ranking {
             self.index.rank(ranking(&settings));
+            ui::refresh_recency(cx);
             self.index_changed(cx);
         }
         if changes.filters {
@@ -432,9 +461,9 @@ impl Shell {
     }
 }
 
-fn later(cx: &mut Context<Shell>, save: fn(&mut Shell, &mut Context<Shell>)) -> Task<()> {
+fn later(cx: &mut Context<Shell>, delay: Duration, save: fn(&mut Shell, &mut Context<Shell>)) -> Task<()> {
     cx.spawn(async move |this, cx| {
-        cx.background_executor().timer(SAVE_DELAY).await;
+        cx.background_executor().timer(delay).await;
         let _ = this.update(cx, save);
     })
 }
@@ -491,6 +520,7 @@ pub(crate) fn watching(settings: &Settings) -> Watching {
             .collect(),
         double_click: settings.menu.double_click,
         middle_click: settings.menu.middle_click,
+        usage: settings.index.windows_usage,
     }
 }
 

@@ -15,7 +15,7 @@ use windows::Win32::{
         },
         Dxgi::{
             CreateDXGIFactory2, DXGI_CREATE_FACTORY_DEBUG, DXGI_CREATE_FACTORY_FLAGS,
-            IDXGIAdapter1, IDXGIFactory6,
+            IDXGIAdapter1, IDXGIDevice, IDXGIFactory6,
         },
     },
 };
@@ -61,6 +61,9 @@ impl DirectXDevices {
                 log::info!("Created device with Direct3D 10.1 feature level.")
             }
             _ => unreachable!(),
+        }
+        if let Ok(dxgi_device) = device.cast::<IDXGIDevice>() {
+            let _ = unsafe { dxgi_device.SetGPUThreadPriority(2) };
         }
 
         Ok(Self {

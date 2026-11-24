@@ -94,6 +94,7 @@ pub(crate) struct IndexOptions {
     pub(crate) high: Vec<String>,
     pub(crate) low: Vec<String>,
     pub(crate) hidden_low: bool,
+    pub(crate) windows_usage: bool,
     pub(crate) rewalk: Rewalk,
     pub(crate) full_text: bool,
 }
@@ -136,6 +137,7 @@ impl Default for IndexOptions {
             high: Vec::new(),
             low: Vec::new(),
             hidden_low: true,
+            windows_usage: true,
             rewalk: Rewalk::default(),
             full_text: false,
         }

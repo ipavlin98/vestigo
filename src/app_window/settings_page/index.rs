@@ -78,6 +78,8 @@ impl SettingsPage {
         });
         let hidden_low = toggle("hidden-low", settings.index.hidden_low, theme)
             .on_click(|_, _, cx| change(cx, |settings| settings.index.hidden_low = !settings.index.hidden_low));
+        let windows_usage = toggle("windows-usage", settings.index.windows_usage, theme)
+            .on_click(|_, _, cx| change(cx, |settings| settings.index.windows_usage = !settings.index.windows_usage));
         let rebuild =
             button("rebuild", strings.rebuild, true, theme, |_, _, _| platform::send(platform::Event::Rebuild));
         let extra = Folders {
@@ -122,6 +124,7 @@ impl SettingsPage {
             Heading::Title(strings.section_system),
             vec![
                 setting(strings.hidden_low, strings.hidden_low_hint, hidden_low),
+                setting(strings.windows_usage, strings.windows_usage_hint, windows_usage),
                 setting(strings.rebuild_index, strings.rebuild_hint, rebuild),
             ],
         ));
